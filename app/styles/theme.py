@@ -472,6 +472,9 @@ QFrame#panel {
     border-radius: 12px;
 }
 
+QWidget#content_area {
+    background-color: #0D1B2E;
+}
 """
 
 # Color constants for use in Python code

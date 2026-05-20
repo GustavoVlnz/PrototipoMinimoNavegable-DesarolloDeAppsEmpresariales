@@ -20,6 +20,7 @@ class SolicitudesView(QWidget):
         super().__init__(parent)
         self._solicitudes = list(SOLICITUDES)
         self._build_ui()
+        self.setObjectName("content_area")
 
     def _build_ui(self):
         layout = QVBoxLayout(self)

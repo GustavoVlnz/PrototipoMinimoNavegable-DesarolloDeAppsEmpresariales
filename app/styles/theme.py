@@ -76,13 +76,22 @@ QPushButton#nav_btn {
     color: #FFFFFF;
     background: transparent;
     border: none;
+
     text-align: left;
-    padding: 10px 16px 10px 20px;
-    font-size: 13px;
-    font-weight: 700;
-    border-radius: 8px;
-    margin: 1px 10px;
+
+    padding: 12px 16px;
+    padding-left: 18px;
+
+    font-size: 14px;
+    font-weight: 600;
+
+    border-radius: 10px;
+
+    margin: 2px 10px;
+
+    icon-size: 20px;
 }
+
 QPushButton#nav_btn:hover {
     background-color: rgba(255,255,255,0.10);
     color: #FFFFFF;
@@ -91,7 +100,7 @@ QPushButton#nav_btn:hover {
 QPushButton#nav_btn[active="true"] {
     background-color: #1E5FC3;
     color: #FFFFFF;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 QLabel#user_name {
@@ -394,6 +403,24 @@ QDialog QPushButton:pressed {
     background-color: #133A8A;
 }
 
+QMessageBox QPushButton {
+    background-color: #1E5FC3;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 18px;
+    min-width: 80px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QMessageBox QPushButton:hover {
+    background-color: #1749A3;
+}
+
+QMessageBox QPushButton:pressed {
+    background-color: #133A8A;
+}
 /* ───────────────────────────────────────────────
    ALERT PANEL
 ─────────────────────────────────────────────── */

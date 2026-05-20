@@ -1,26 +1,25 @@
+"""
+LoncoExpress - Sistema de Gestión de Flota Vehicular
+Punto de entrada principal de la aplicación.
+"""
+
 import sys
-import os
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt
 from app.ui.main_window import MainWindow
+from app.styles.theme import APP_STYLESHEET
 
 
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("LoncoExpress")
+    app.setApplicationName("LoncoExpress - Gestión de Flota")
     app.setOrganizationName("LoncoExpress")
-
-    # Fuente base de la app
-    font = QFont("Segoe UI", 10)
-    app.setFont(font)
-
-    # Cargar hoja de estilos QSS
-    qss_path = os.path.join(os.path.dirname(__file__), "app", "assets", "styles", "main.qss")
-    with open(qss_path, "r", encoding="utf-8") as f:
-        app.setStyleSheet(f.read())
+    app.setStyleSheet(APP_STYLESHEET)
 
     window = MainWindow()
-    window.show()
+    window.setWindowTitle("LoncoExpress — Gestión de Flota Vehicular")
+    window.setMinimumSize(1780, 850)
+    window.showMaximized()
 
     sys.exit(app.exec())
 

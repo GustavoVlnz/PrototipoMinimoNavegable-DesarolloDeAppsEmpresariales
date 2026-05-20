@@ -49,10 +49,10 @@ class ReportesView(QWidget):
         incidentes_hoy = len(INCIDENTES)
 
         cards = [
-            KpiCard("✅", "Asignaciones Completadas", completadas, color="#16A34A"),
-            KpiCard("⚠️", "Con Incidencia", con_incidencia, color="#D97706"),
-            KpiCard("🚫", "Incumplimientos de Plazo", incumplimientos, color="#DC2626"),
-            KpiCard("📋", "Incidentes Registrados Hoy", incidentes_hoy, color="#1E5FC3"),
+            KpiCard("Asignaciones Completadas", completadas, color="#16A34A"),
+            KpiCard("Con Incidencia", con_incidencia, color="#D97706"),
+            KpiCard("Incumplimientos de Plazo", incumplimientos, color="#DC2626"),
+            KpiCard("Incidentes Registrados Hoy", incidentes_hoy, color="#1E5FC3"),
         ]
         for card in cards:
             layout.addWidget(card)

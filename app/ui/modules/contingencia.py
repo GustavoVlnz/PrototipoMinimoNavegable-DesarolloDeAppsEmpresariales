@@ -40,7 +40,7 @@ class ContingenciaView(QWidget):
         wl = QHBoxLayout(warn)
         wl.setContentsMargins(16, 12, 16, 12)
         warn_lbl = QLabel(
-            "🛡️  <b>Modo Contingencia</b> — El sistema central no está disponible. "
+            "<b>Modo Contingencia</b> — El sistema central no está disponible. "
             "Registra las operaciones manualmente aquí. Todos los registros deben ser "
             "sincronizados con el sistema principal una vez restablecido el servicio."
         )
@@ -106,7 +106,7 @@ class ContingenciaView(QWidget):
         btn_limpiar = QPushButton("Limpiar")
         btn_limpiar.setObjectName("btn_secondary")
         btn_limpiar.clicked.connect(self._limpiar)
-        btn_guardar = QPushButton("💾 Guardar Registro Manual")
+        btn_guardar = QPushButton("Guardar Registro Manual")
         btn_guardar.setObjectName("btn_primary")
         btn_guardar.clicked.connect(self._guardar)
         btn_row.addWidget(btn_limpiar)
@@ -122,7 +122,7 @@ class ContingenciaView(QWidget):
         sync_row = QHBoxLayout()
         sync_row.addWidget(self._contador_lbl)
         sync_row.addStretch()
-        btn_sync = QPushButton("🔄 Sincronizar con Sistema Principal")
+        btn_sync = QPushButton("Sincronizar con Sistema Principal")
         btn_sync.setObjectName("btn_warning")
         btn_sync.clicked.connect(self._sincronizar)
         sync_row.addWidget(btn_sync)

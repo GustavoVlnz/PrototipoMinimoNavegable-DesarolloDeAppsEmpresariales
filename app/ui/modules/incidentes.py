@@ -28,7 +28,7 @@ class IncidentesView(QWidget):
         topbar = TopBar(
             "Gestión de Incidentes",
             f"{len(self._incidentes)} incidentes registrados",
-            "⚠️ Reportar Incidente",
+            "Reportar Incidente",
         )
         topbar.action_clicked.connect(self._reportar_incidente)
         layout.addWidget(topbar)
@@ -44,7 +44,7 @@ class IncidentesView(QWidget):
         info.setObjectName("alert_info")
         il = QHBoxLayout(info)
         il.setContentsMargins(12, 10, 12, 10)
-        il.addWidget(QLabel("ℹ️  Niveles de gravedad: "
+        il.addWidget(QLabel("Niveles de gravedad: "
                             "Menor (sin interrupción) · "
                             "Operativa (continúa con monitoreo) · "
                             "Crítica (inmovilización obligatoria)"))
@@ -68,7 +68,7 @@ class IncidentesView(QWidget):
         # Panel de acciones
         action_row = QHBoxLayout()
         action_row.addStretch()
-        self._btn_cerrar = QPushButton("✅ Cerrar Incidente Seleccionado")
+        self._btn_cerrar = QPushButton("Cerrar Incidente Seleccionado")
         self._btn_cerrar.setObjectName("btn_success")
         self._btn_cerrar.setEnabled(False)
         self._btn_cerrar.clicked.connect(self._cerrar_incidente)

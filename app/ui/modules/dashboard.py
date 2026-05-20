@@ -64,12 +64,12 @@ class DashboardView(QWidget):
         layout.setSpacing(16)
 
         cards = [
-            KpiCard("🟢", "Vehículos Disponibles",  kpis["disponibles"],         color="#16A34A"),
-            KpiCard("🔵", "En Ruta",                 kpis["en_ruta"],             color="#1E5FC3"),
-            KpiCard("🔴", "Bloqueados / F. Servicio",kpis["bloqueados"],          color="#DC2626"),
-            KpiCard("🔧", "En Mantención",           kpis["en_mantencion"],       color="#D97706"),
-            KpiCard("⚠️", "Alertas Activas",          kpis["alertas_doc"],         color="#EA580C"),
-            KpiCard("👤", "Conductores Disponibles", kpis["conductores_disponibles"], color="#0B1E3D"),
+            KpiCard("Vehículos Disponibles",  kpis["disponibles"],         color="#16A34A"),
+            KpiCard("En Ruta",                 kpis["en_ruta"],             color="#1E5FC3"),
+            KpiCard("Bloqueados / F. Servicio",kpis["bloqueados"],          color="#DC2626"),
+            KpiCard("En Mantención",           kpis["en_mantencion"],       color="#D97706"),
+            KpiCard("Alertas Activas",          kpis["alertas_doc"],         color="#EA580C"),
+            KpiCard("Conductores Disponibles", kpis["conductores_disponibles"], color="#D9CF1D"),
         ]
         for card in cards:
             layout.addWidget(card)

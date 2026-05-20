@@ -11,18 +11,18 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 
 
-# Definición de módulos: (nombre, emoji_icon, page_index)
+# Definición de módulos: (nombre, page_index)
 NAV_ITEMS = [
-    ("Dashboard",       "⬛ ", 0),
-    ("Solicitudes",     "📋 ", 1),
-    ("Vehículos",       "🚛 ", 2),
-    ("Conductores",     "👤 ", 3),
-    ("Asignaciones",    "🔗 ", 4),
-    ("Incidentes",      "⚠️  ", 5),
-    ("Mantenimiento",   "🔧 ", 6),
-    ("Documentación",   "📄 ", 7),
-    ("Reportes",        "📊 ", 8),
-    ("Contingencia",    "🛡️  ", 9),
+    ("Dashboard",     0),
+    ("Solicitudes",   1),
+    ("Vehículos",     2),
+    ("Conductores",   3),
+    ("Asignaciones",  4),
+    ("Incidentes",    5),
+    ("Mantenimiento", 6),
+    ("Documentación", 7),
+    ("Reportes",      8),
+    ("Contingencia",  9),
 ]
 
 
@@ -62,8 +62,8 @@ class SidebarWidget(QWidget):
         nav_layout.setContentsMargins(0, 4, 0, 4)
         nav_layout.setSpacing(2)
 
-        for i, (name, icon, page_idx) in enumerate(NAV_ITEMS):
-            btn = QPushButton(f"{icon}{name}")
+        for i, (name, page_idx) in enumerate(NAV_ITEMS):
+            btn = QPushButton(f"{name}")
             btn.setObjectName("nav_btn")
             btn.setCheckable(False)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)

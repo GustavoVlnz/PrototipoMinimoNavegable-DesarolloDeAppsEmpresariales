@@ -39,7 +39,7 @@ class MantenimientoView(QWidget):
         info.setObjectName("alert_info")
         il = QHBoxLayout(info)
         il.setContentsMargins(12, 10, 12, 10)
-        il.addWidget(QLabel("ℹ️  Un vehículo solo recupera el estado 'Disponible' "
+        il.addWidget(QLabel("Un vehículo solo recupera el estado 'Disponible' "
                             "tras la aprobación del Técnico de Mantención."))
         c_layout.addWidget(info)
 
@@ -56,7 +56,7 @@ class MantenimientoView(QWidget):
 
         action_row = QHBoxLayout()
         action_row.addStretch()
-        self._btn_habilitar = QPushButton("✅ Habilitar Vehículo (validación técnica)")
+        self._btn_habilitar = QPushButton("Habilitar Vehículo (validación técnica)")
         self._btn_habilitar.setObjectName("btn_success")
         self._btn_habilitar.setEnabled(False)
         self._btn_habilitar.clicked.connect(self._habilitar_vehiculo)

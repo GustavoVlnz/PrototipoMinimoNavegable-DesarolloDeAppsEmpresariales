@@ -80,10 +80,10 @@ class ConductoresView(QWidget):
         descanso = sum(1 for c in self._conductores if c["estado"] == "En descanso")
 
         cards = [
-            KpiCard("✅", "Disponibles",     disponibles, color="#16A34A"),
-            KpiCard("🔵", "Asignados",       asignados,   color="#1E5FC3"),
-            KpiCard("😴", "En Descanso",     descanso,    color="#D97706"),
-            KpiCard("❌", "No Habilitados",  no_hab,      color="#DC2626"),
+            KpiCard("Disponibles",     disponibles, color="#16A34A"),
+            KpiCard("Asignados",       asignados,   color="#1E5FC3"),
+            KpiCard("En Descanso",     descanso,    color="#D97706"),
+            KpiCard("No Habilitados",  no_hab,      color="#DC2626"),
         ]
         for card in cards:
             layout.addWidget(card)

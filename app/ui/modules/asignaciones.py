@@ -127,7 +127,7 @@ class NuevaAsignacionDialog(QDialog):
         info.setObjectName("alert_info")
         info_layout = QHBoxLayout(info)
         info_layout.setContentsMargins(12, 8, 12, 8)
-        info_layout.addWidget(QLabel("ℹ️  El sistema validará aptitud técnica, documental y disponibilidad."))
+        info_layout.addWidget(QLabel("El sistema validará aptitud técnica, documental y disponibilidad."))
         layout.addWidget(info)
 
         def lbl(text):

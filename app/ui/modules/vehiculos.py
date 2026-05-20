@@ -92,18 +92,8 @@ class VehiculosView(QWidget):
             "En Mantención": "#D97706",
         }
 
-        icon_map = {
-            "Disponible": "✅",
-            "En Ruta": "🚛",
-            "Reservado": "📋",
-            "Bloqueado": "🔒",
-            "Fuera de Servicio": "❌",
-            "En Mantención": "🔧",
-        }
-
         for estado, count in estados.items():
             card = KpiCard(
-                icon_map.get(estado, "🚗"),
                 estado, count,
                 color=color_map.get(estado, "#0B1E3D")
             )

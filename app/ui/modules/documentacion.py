@@ -43,8 +43,7 @@ class DocumentacionView(QWidget):
             ap_layout = QVBoxLayout(alert_panel)
             ap_layout.setContentsMargins(16, 16, 16, 16)
             ap_layout.setSpacing(6)
-            ap_layout.addWidget(QLabel("⚡ Alertas Prioritarias").setObjectName("section_header") or
-                                _header("⚡ Alertas Prioritarias"))
+            ap_layout.addWidget(_header("Alertas Prioritarias"))
 
             for d in self._documentos:
                 if d["estado"] in ("Vencida", "Por vencer"):
@@ -78,7 +77,10 @@ class DocumentacionView(QWidget):
             set_table_item(table, r, 3, dias_str)
             set_table_item(table, r, 4, d["estado"], badge=True)
 
-        table.resizeColumnsToContents()
+        # Ajustar columnas de texto; la de badge ya fue ajustada por set_table_item
+        for col in range(len(cols) - 1):
+            table.resizeColumnToContents(col)
+
         p_layout.addWidget(table)
         c_layout.addWidget(panel)
         layout.addWidget(content)

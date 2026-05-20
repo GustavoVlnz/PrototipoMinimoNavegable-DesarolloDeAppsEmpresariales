@@ -15,8 +15,11 @@ APP_STYLESHEET = """
     outline: none;
 }
 
-QMainWindow, QWidget#central {
-    background-color: #0D1B2E;
+QMainWindow,
+QWidget#central,
+QStackedWidget,
+QFrame#content_area {
+    background-color: #132238;
 }
 
 QScrollArea {
@@ -46,7 +49,12 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
    SIDEBAR
 ─────────────────────────────────────────────── */
 QWidget#sidebar {
-    background-color: #050E1C;
+    background-color: #071120;
+    border-right: 1px solid #132238;
+}
+
+QWidget#sidebar QWidget {
+    background: transparent;
 }
 
 QLabel#brand_logo {
@@ -120,6 +128,10 @@ QLabel#user_avatar {
     font-weight: 800;
 }
 
+QStackedWidget#content_stack {
+    background-color: #132238;
+}
+
 /* ───────────────────────────────────────────────
    TOPBAR
 ─────────────────────────────────────────────── */
@@ -156,8 +168,8 @@ QPushButton#topbar_action:pressed {
    KPI CARDS
 ─────────────────────────────────────────────── */
 QFrame#kpi_card {
-    background-color: #172B42;
-    border: 1px solid #1E3A5C;
+    background-color: #1A2F4D;
+    border: 1px solid #23456D;
     border-radius: 12px;
 }
 QLabel#kpi_value {
@@ -182,8 +194,8 @@ QLabel#kpi_icon {
    TABLES
 ─────────────────────────────────────────────── */
 QTableWidget {
-    background-color: #172B42;
-    border: 1px solid #1E3A5C;
+    background-color: #1A2F4D;
+    border: 1px solid #23456D;
     border-radius: 10px;
     gridline-color: #1E3A5C;
     selection-background-color: #1E5FC3;
@@ -424,32 +436,30 @@ QMessageBox QPushButton:pressed {
 /* ───────────────────────────────────────────────
    ALERT PANEL
 ─────────────────────────────────────────────── */
-QFrame#alert_item {
-    background-color: #FEF3C7;
-    border: 1px solid #FDE68A;
-    border-radius: 8px;
-    margin: 2px 0;
-}
 QFrame#alert_critical {
-    background-color: #FEE2E2;
-    border: 1px solid #FECACA;
-    border-radius: 8px;
-    margin: 2px 0;
+    background-color: rgba(127, 29, 29, 0.35);
+    border: 1px solid #DC2626;
+    border-radius: 10px;
 }
+
+QFrame#alert_item {
+    background-color: rgba(146, 64, 14, 0.35);
+    border: 1px solid #F59E0B;
+    border-radius: 10px;
+}
+
 QFrame#alert_info {
-    background-color: #DBEAFE;
-    border: 1px solid #BFDBFE;
-    border-radius: 8px;
-    margin: 2px 0;
+    background-color: rgba(29, 78, 216, 0.25);
+    border: 1px solid #3B82F6;
+    border-radius: 10px;
 }
-/* Texto oscuro dentro de alertas de color claro */
 QFrame#alert_item QLabel,
 QFrame#alert_item QPushButton,
 QFrame#alert_critical QLabel,
 QFrame#alert_critical QPushButton,
 QFrame#alert_info QLabel,
 QFrame#alert_info QPushButton {
-    color: #1E2D40;
+    color: #E8F0FE;
     background: transparent;
 }
 
@@ -457,13 +467,11 @@ QFrame#alert_info QPushButton {
    CONTENT PANELS
 ─────────────────────────────────────────────── */
 QFrame#panel {
-    background-color: #172B42;
-    border: 1px solid #1E3A5C;
+    background-color: #1A2F4D;
+    border: 1px solid #23456D;
     border-radius: 12px;
 }
-QFrame#content_area {
-    background-color: #0D1B2E;
-}
+
 """
 
 # Color constants for use in Python code

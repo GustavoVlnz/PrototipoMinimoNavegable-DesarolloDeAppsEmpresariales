@@ -51,8 +51,7 @@ class ConductoresView(QWidget):
 
         for r, c in enumerate(self._conductores):
             asig = c["asignacion_activa"] or "—"
-            habilitado_icon = "✅" if c["habilitado"] else "❌"
-            set_table_item(table, r, 0, f"{habilitado_icon} {c['nombre']}")
+            set_table_item(table, r, 0, f"{c['nombre']}")
             set_table_item(table, r, 1, c["rut"])
             set_table_item(table, r, 2, c["estado"], badge=True)
             set_table_item(table, r, 3, c["licencia"])

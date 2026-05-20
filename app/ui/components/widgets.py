@@ -74,6 +74,7 @@ def make_badge(text: str) -> QLabel:
     badge = QLabel(text)
     badge.setObjectName(STATUS_BADGE_MAP.get(text, "badge_gray"))
     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     # Solo política de tamaño — sin max/min fijo para no interferir con el layout
     badge.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
     return badge
@@ -91,10 +92,11 @@ class TopBar(QWidget):
     def __init__(self, title: str, subtitle: str = "", action_label: str = "", parent=None):
         super().__init__(parent)
         self.setObjectName("topbar")
-        self.setFixedHeight(70)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFixedHeight(83)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(28, 0, 28, 0)
+        layout.setContentsMargins(28, 8, 28, 8)
 
         title_container = QVBoxLayout()
         title_container.setSpacing(0)
@@ -130,10 +132,12 @@ class KpiCard(QFrame):
                  delta: str = "", color: str = "#0B1E3D", parent=None):
         super().__init__(parent)
         self.setObjectName("kpi_card")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMinimumHeight(120)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         layout = QHBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(16)
 
@@ -143,9 +147,11 @@ class KpiCard(QFrame):
         val_lbl = QLabel(str(value))
         val_lbl.setObjectName("kpi_value")
         val_lbl.setStyleSheet(f"color: {color};")
+        val_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         lbl = QLabel(label)
         lbl.setObjectName("kpi_label")
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         text_layout.addWidget(val_lbl)
         text_layout.addWidget(lbl)
@@ -154,9 +160,9 @@ class KpiCard(QFrame):
             delta_lbl = QLabel(delta)
             delta_lbl.setObjectName("kpi_delta")
             text_layout.addWidget(delta_lbl)
+            delta_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         layout.addLayout(text_layout)
-        layout.addStretch()
 
 
 def _lighten_color(hex_color: str) -> str:
@@ -181,6 +187,7 @@ def make_table(columns: list[str], row_height: int = 44) -> QTableWidget:
     Retorna la tabla lista para rellenar con datos.
     """
     table = QTableWidget()
+    table.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     table.setColumnCount(len(columns))
     table.setHorizontalHeaderLabels(columns)
     table.setAlternatingRowColors(True)
@@ -188,7 +195,8 @@ def make_table(columns: list[str], row_height: int = 44) -> QTableWidget:
     table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
     table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     table.verticalHeader().setVisible(False)
-    table.verticalHeader().setDefaultSectionSize(row_height)
+    table.verticalHeader().setMinimumSectionSize(row_height)
+    table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
 
     # Interactive: permite que set_table_item ajuste anchos de columnas con badges
     # sin ser sobreescrito por ResizeToContents que ignora setCellWidget
@@ -197,6 +205,9 @@ def make_table(columns: list[str], row_height: int = 44) -> QTableWidget:
 
     table.setShowGrid(False)
     table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+    table.resizeColumnsToContents()
+    table.resizeRowsToContents()
     return table
 
 
@@ -208,10 +219,11 @@ def set_table_item(table: QTableWidget, row: int, col: int,
 
         # Calcular ancho mínimo real basado en el texto + padding del badge
         text_w = badge_lbl.fontMetrics().horizontalAdvance(text)
-        needed_w = text_w + 28   # 14px padding cada lado del badge
-        container_w = needed_w + 16  # 8px margen cada lado del container
+        needed_w = text_w + 42
+        container_w = needed_w + 24
 
         container = QWidget()
+        container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         container.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(container)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -238,31 +250,24 @@ def set_table_item(table: QTableWidget, row: int, col: int,
 
 def make_alert_item(tipo: str, mensaje: str) -> QFrame:
     """Crea un ítem de alerta para el panel del dashboard."""
+
     frame_id = {
         "critica":     "alert_critical",
         "advertencia": "alert_item",
         "info":        "alert_info",
     }.get(tipo, "alert_info")
 
-    icon = {
-        "critica":     "🔴",
-        "advertencia": "🟡",
-        "info":        "🔵",
-    }.get(tipo, "ℹ️")
-
     frame = QFrame()
+    frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
     frame.setObjectName(frame_id)
 
     layout = QHBoxLayout(frame)
     layout.setContentsMargins(12, 8, 12, 8)
     layout.setSpacing(8)
 
-    icon_lbl = QLabel(icon)
-    icon_lbl.setFixedWidth(20)
     msg_lbl = QLabel(mensaje)
     msg_lbl.setWordWrap(True)
 
-    layout.addWidget(icon_lbl)
     layout.addWidget(msg_lbl)
 
     return frame

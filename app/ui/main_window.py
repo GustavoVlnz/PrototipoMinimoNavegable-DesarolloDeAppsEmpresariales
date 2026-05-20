@@ -43,6 +43,7 @@ class MainWindow(QMainWindow):
 
         # ── Stack de páginas
         self._stack = QStackedWidget()
+        self._stack.setObjectName("content_stack")
         root.addWidget(self._stack)
 
         # Registrar módulos (mismo orden que NAV_ITEMS en sidebar.py)

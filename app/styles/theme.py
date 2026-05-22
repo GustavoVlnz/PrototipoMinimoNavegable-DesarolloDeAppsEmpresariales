@@ -1,7 +1,5 @@
 """
 Tema visual de LoncoExpress.
-Paleta oscura completa: sidebar azul profundo, fondo azul opaco,
-componentes en azul medio (#172B42) con texto claro.
 """
 
 APP_STYLESHEET = """
@@ -337,6 +335,25 @@ QPushButton#btn_success {
     font-weight: 600;
 }
 
+QPushButton#btn_table_action {
+    background-color: #1B365D;
+    border: 1px solid #2F5B91;
+    border-radius: 8px;
+    padding: 6px 12px;
+    color: #E8F0FE;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QPushButton#btn_table_action:hover {
+    background-color: #244975;
+    border: 1px solid #4A78B0;
+}
+
+QPushButton#btn_table_action:pressed {
+    background-color: #16324C;
+}
+
 /* ───────────────────────────────────────────────
    STATUS BADGES 
 ─────────────────────────────────────────────── */
@@ -476,7 +493,6 @@ QWidget#content_area {
     background-color: #0D1B2E;
 }
 """
-
 # Color constants for use in Python code
 COLORS = {
     # Backgrounds oscuros (jerarquía de capas)

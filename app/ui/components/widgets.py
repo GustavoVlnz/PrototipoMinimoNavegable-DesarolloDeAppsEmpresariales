@@ -271,3 +271,29 @@ def make_alert_item(tipo: str, mensaje: str) -> QFrame:
     layout.addWidget(msg_lbl)
 
     return frame
+
+# ─────────────────────────────────────────────────────────────
+# Helpers reutilizables
+# ─────────────────────────────────────────────────────────────
+
+def make_action_button(text, style, slot, icon=None):
+    btn = QPushButton(f"{icon}  {text}" if icon else text)
+    btn.setObjectName(style)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn.clicked.connect(slot)
+    return btn
+
+
+def make_info_frame(text: str) -> QFrame:
+    frame = QFrame()
+    frame.setObjectName("alert_info")
+    frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+    layout = QHBoxLayout(frame)
+    layout.setContentsMargins(12, 10, 12, 10)
+
+    lbl = QLabel(text)
+    lbl.setWordWrap(True)
+
+    layout.addWidget(lbl)
+    return frame

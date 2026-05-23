@@ -1,22 +1,26 @@
 """
-Módulo Vehículos — Listado de flota, detalle y acciones de bloqueo.
-Actor principal: Encargado de Flota.
+Módulo Vehículos — PMN.
+
 """
 
+from datetime import datetime
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QDialog, QScrollArea,
-    QMessageBox, QStackedWidget, QGridLayout, QSizePolicy
+    QPushButton, QFrame, QDialog, QComboBox,
+    QSpinBox, QLineEdit, QMessageBox, QStackedWidget,
+    QGridLayout
 )
-from PyQt6.QtCore import Qt
 
 from app.ui.components.widgets import (
-    TopBar, make_table, set_table_item, make_badge, KpiCard
+    TopBar, make_table, set_table_item,
+    make_badge, KpiCard, make_action_button, make_info_frame,
 )
 from app.data.mock_data import VEHICULOS
 
 
 class VehiculosView(QWidget):
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._vehiculos = list(VEHICULOS)
@@ -31,75 +35,58 @@ class VehiculosView(QWidget):
         self._topbar = TopBar(
             "Gestión de Vehículos",
             f"{len(self._vehiculos)} unidades en flota",
+            "＋ Agregar Vehículo",
         )
+        self._topbar.action_clicked.connect(self._agregar)
         layout.addWidget(self._topbar)
 
-        # Vistas: 0 = listado, 1 = detalle
-        self._stack.addWidget(self._make_lista_view())
+        self._stack.addWidget(self._make_lista())
         layout.addWidget(self._stack)
 
-    # ──────────────────────────────────────────
-    def _make_lista_view(self) -> QWidget:
+    # ── Lista ─────────────────────────────────────────────────────
+
+    def _make_lista(self) -> QWidget:
         view = QWidget()
         view.setObjectName("content_area")
         layout = QVBoxLayout(view)
         layout.setContentsMargins(28, 24, 28, 28)
         layout.setSpacing(16)
 
-        # Resumen de estados
-        layout.addWidget(self._make_resumen())
+        layout.addLayout(self._build_kpis())
 
-        # Tabla
         panel = QFrame()
         panel.setObjectName("panel")
         p_layout = QVBoxLayout(panel)
-        p_layout.setContentsMargins(16, 16, 16, 16)
-        p_layout.setSpacing(10)
+        p_layout.setContentsMargins(16, 12, 16, 16)
 
-        header_row = QHBoxLayout()
-        header_row.addWidget(_section_label("Flota Completa"))
-        header_row.addStretch()
-        tip = QLabel("Haz clic en una fila para ver el detalle")
-        tip.setStyleSheet("color: #5B7FA6; font-size: 11px;")
-        header_row.addWidget(tip)
-        p_layout.addLayout(header_row)
+        hint = QLabel("Haz clic en «Gestionar» para ver detalle o ejecutar acciones.")
+        hint.setObjectName("page_subtitle")
+        p_layout.addWidget(hint)
 
-        cols = ["Patente", "Tipo", "Modelo", "Cap. (kg)", "Ubicación", "Estado", "Últ. Mantención", "Observación"]
+        cols = ["Patente", "Tipo", "Modelo", "Cap. (kg)",
+                "Ubicación", "Estado", "Últ. Mantención", "Acciones"]
         self._table = make_table(cols)
-        self._table.cellClicked.connect(self._on_row_clicked)
+        self._table.cellDoubleClicked.connect(lambda r, _: self._ver_detalle(r))
         self._fill_table()
         p_layout.addWidget(self._table)
 
         layout.addWidget(panel)
         return view
 
-    def _make_resumen(self) -> QWidget:
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(12)
-
-        estados = {}
-        for v in self._vehiculos:
-            estados[v["estado"]] = estados.get(v["estado"], 0) + 1
-
+    def _build_kpis(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(12)
         color_map = {
-            "Disponible": "#16A34A",
-            "En Ruta": "#1E5FC3",
-            "Reservado": "#1E5FC3",
-            "Bloqueado": "#DC2626",
-            "Fuera de Servicio": "#DC2626",
-            "En Mantención": "#D97706",
+            "Disponible": "#16A34A", "En Ruta": "#1E5FC3",
+            "Reservado": "#1E5FC3",  "Bloqueado": "#DC2626",
+            "Fuera de Servicio": "#DC2626", "En Mantención": "#D97706",
         }
-
-        for estado, count in estados.items():
-            card = KpiCard(
-                estado, count,
-                color=color_map.get(estado, "#0B1E3D")
-            )
-            layout.addWidget(card)
-
-        layout.addStretch()
+        conteo = {}
+        for v in self._vehiculos:
+            conteo[v["estado"]] = conteo.get(v["estado"], 0) + 1
+        for estado, count in conteo.items():
+            row.addWidget(KpiCard(estado, count, color=color_map.get(estado, "#E8F0FE")))
+        row.addStretch()
         return row
 
     def _fill_table(self):
@@ -112,144 +99,230 @@ class VehiculosView(QWidget):
             set_table_item(self._table, r, 4, v["ubicacion"])
             set_table_item(self._table, r, 5, v["estado"], badge=True)
             set_table_item(self._table, r, 6, v["ultima_mantencion"])
-            obs = v.get("observacion", "")
-            set_table_item(self._table, r, 7, obs[:50] + "…" if len(obs) > 50 else obs)
+
+            btn = QPushButton("Gestionar")
+            btn.setObjectName("btn_table_action")
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda _, i=r: self._ver_detalle(i))
+            self._table.setCellWidget(r, 7, btn)
+
         self._table.resizeColumnsToContents()
 
-    def _on_row_clicked(self, row: int, _col: int):
-        vehiculo = self._vehiculos[row]
-        detail = VehiculoDetailView(vehiculo, on_back=self._back_to_lista,
-                                    on_action=self._toggle_bloqueo)
-        # Reemplazar vista de detalle si existe
+    # ── Detalle ───────────────────────────────────────────────────
+
+    def _ver_detalle(self, row: int):
+        v = self._vehiculos[row]
+        detail = VehiculoDetalleView(v, on_back=self._volver,
+                                     on_toggle=self._toggle_bloqueo)
         if self._stack.count() > 1:
-            old = self._stack.widget(1)
-            self._stack.removeWidget(old)
+            self._stack.removeWidget(self._stack.widget(1))
         self._stack.addWidget(detail)
         self._stack.setCurrentIndex(1)
-        self._topbar.findChild(QLabel, "page_title").setText(f"Vehículo {vehiculo['patente']}")
+        self._topbar.findChild(QLabel, "page_title").setText(f"Vehículo {v['patente']}")
 
-    def _back_to_lista(self):
+    def _volver(self):
         self._stack.setCurrentIndex(0)
         self._topbar.findChild(QLabel, "page_title").setText("Gestión de Vehículos")
+        self._fill_table()
+
+    # ── Acciones ──────────────────────────────────────────────────
 
     def _toggle_bloqueo(self, patente: str):
         for v in self._vehiculos:
             if v["patente"] == patente:
                 if v["estado"] == "Disponible":
                     v["estado"] = "Bloqueado"
-                    msg = f"Vehículo {patente} bloqueado correctamente."
+                    msg = f"Vehículo {patente} bloqueado."
                 elif v["estado"] == "Bloqueado":
                     v["estado"] = "Disponible"
-                    msg = f"Vehículo {patente} desbloqueado. Ahora disponible."
+                    msg = f"Vehículo {patente} desbloqueado."
                 else:
-                    msg = f"No se puede cambiar el estado desde '{v['estado']}'."
+                    msg = f"No se puede cambiar desde estado «{v['estado']}»."
                 QMessageBox.information(self, "Estado actualizado", msg)
                 self._fill_table()
-                self._back_to_lista()
+                self._volver()
                 break
 
+    def _agregar(self):
+        dlg = AgregarVehiculoDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            data = dlg.get_data()
+            data["estado"]            = "Disponible"
+            data["ultima_mantencion"] = "Sin registro"
+            data["kilometraje"]       = 0
+            data["seguro_vence"]      = "12/2026"
+            data["permiso_vence"]     = "12/2026"
+            data["revision_tecnica"]  = "12/2026"
+            data["observacion"]       = ""
+            self._vehiculos.append(data)
+            self._fill_table()
+            QMessageBox.information(self, "Vehículo agregado",
+                                    f"Vehículo {data['patente']} registrado en la flota.")
 
-# ─────────────────────────────────────────────
-class VehiculoDetailView(QWidget):
-    """Vista de detalle de un vehículo específico."""
 
-    def __init__(self, vehiculo: dict, on_back, on_action, parent=None):
+# ─────────────────────────────────────────────────────────────────
+class VehiculoDetalleView(QWidget):
+
+    def __init__(self, v: dict, on_back, on_toggle, parent=None):
         super().__init__(parent)
-        self._v = vehiculo
-        self._on_back = on_back
-        self._on_action = on_action
+        self._v = v
+        self._on_back   = on_back
+        self._on_toggle = on_toggle
         self.setObjectName("content_area")
         self._build_ui()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 24, 28, 28)
-        layout.setSpacing(20)
+        layout.setSpacing(16)
 
-        # Botón volver
+        # Volver
         back_row = QHBoxLayout()
-        back_btn = QPushButton("← Volver al listado")
-        back_btn.setObjectName("btn_secondary")
-        back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        back_btn.clicked.connect(self._on_back)
-        back_row.addWidget(back_btn)
+        btn_back = QPushButton("← Volver al listado")
+        btn_back.setObjectName("btn_secondary")
+        btn_back.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_back.clicked.connect(self._on_back)
+        back_row.addWidget(btn_back)
         back_row.addStretch()
         layout.addLayout(back_row)
 
-        # Panel principal
         panel = QFrame()
         panel.setObjectName("panel")
-        p_layout = QVBoxLayout(panel)
-        p_layout.setContentsMargins(24, 24, 24, 24)
-        p_layout.setSpacing(20)
+        p = QVBoxLayout(panel)
+        p.setContentsMargins(24, 20, 24, 20)
+        p.setSpacing(16)
 
         # Encabezado
-        header = QHBoxLayout()
-        title = QLabel(f"{self._v['modelo']} — {self._v['patente']}")
+        h = QHBoxLayout()
+        title = QLabel(f"{self._v['modelo']}  —  {self._v['patente']}")
         title.setObjectName("dialog_title")
-        header.addWidget(title)
-        header.addStretch()
-
-        badge = make_badge(self._v["estado"])
-        badge.setFixedWidth(140)
-        header.addWidget(badge)
-        p_layout.addLayout(header)
+        h.addWidget(title)
+        h.addStretch()
+        h.addWidget(make_badge(self._v["estado"]))
+        p.addLayout(h)
 
         # Grid de datos
         grid = QGridLayout()
-        grid.setSpacing(12)
-        datos = [
-            ("Tipo", self._v["tipo"]),
-            ("Capacidad", f"{self._v['capacidad_kg']:,} kg"),
-            ("Kilometraje", f"{self._v['kilometraje']:,} km"),
-            ("Ubicación actual", self._v["ubicacion"]),
-            ("Última mantención", self._v["ultima_mantencion"]),
-            ("Seguro vence", self._v["seguro_vence"]),
-            ("Permiso circulación", self._v["permiso_vence"]),
-            ("Revisión técnica", self._v["revision_tecnica"]),
+        grid.setSpacing(10)
+        fields = [
+            ("Tipo",             self._v["tipo"]),
+            ("Capacidad",        f"{self._v['capacidad_kg']:,} kg"),
+            ("Kilometraje",      f"{self._v.get('kilometraje', 0):,} km"),
+            ("Ubicación",        self._v["ubicacion"]),
+            ("Últ. mantención",  self._v["ultima_mantencion"]),
+            ("Seguro vence",     self._v.get("seguro_vence", "—")),
+            ("Permiso circ.",    self._v.get("permiso_vence", "—")),
+            ("Rev. técnica",     self._v.get("revision_tecnica", "—")),
         ]
-        for i, (k, val) in enumerate(datos):
+        for i, (k, val) in enumerate(fields):
             row, col = divmod(i, 2)
             lbl_k = QLabel(k + ":")
             lbl_k.setObjectName("form_label")
             lbl_v = QLabel(str(val))
-            lbl_v.setStyleSheet("font-weight: 500;")
+            lbl_v.setStyleSheet("color: #E8F0FE;")
             grid.addWidget(lbl_k, row, col * 2)
             grid.addWidget(lbl_v, row, col * 2 + 1)
-        p_layout.addLayout(grid)
+        p.addLayout(grid)
 
-        # Observación
+        # Observación si existe
         if self._v.get("observacion"):
-            obs_frame = QFrame()
-            obs_frame.setObjectName("alert_item")
-            obs_layout = QHBoxLayout(obs_frame)
-            obs_layout.setContentsMargins(12, 8, 12, 8)
-            obs_layout.addWidget(QLabel("⚠️"))
-            obs_layout.addWidget(QLabel(self._v["observacion"]))
-            p_layout.addWidget(obs_frame)
+            p.addWidget(make_info_frame(f"⚠ {self._v['observacion']}"))
 
-        # Botones de acción
+        # Botón contextual
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-
         estado = self._v["estado"]
         if estado == "Disponible":
-            btn = QPushButton("🔒 Bloquear Vehículo")
+            p.addWidget(make_info_frame("Vehículo operativo y disponible para asignación."))
+            btn = QPushButton("  Bloquear Vehículo")
             btn.setObjectName("btn_danger")
-            btn.clicked.connect(lambda: self._on_action(self._v["patente"]))
+            btn.clicked.connect(lambda: self._on_toggle(self._v["patente"]))
             btn_row.addWidget(btn)
         elif estado == "Bloqueado":
-            btn = QPushButton("🔓 Desbloquear Vehículo")
+            p.addWidget(make_info_frame("Vehículo bloqueado administrativamente."))
+            btn = QPushButton("  Desbloquear Vehículo")
             btn.setObjectName("btn_success")
-            btn.clicked.connect(lambda: self._on_action(self._v["patente"]))
+            btn.clicked.connect(lambda: self._on_toggle(self._v["patente"]))
             btn_row.addWidget(btn)
+        else:
+            p.addWidget(make_info_frame(
+                f"Estado «{estado}» — sin acciones manuales disponibles."
+            ))
 
-        p_layout.addLayout(btn_row)
+        p.addLayout(btn_row)
         layout.addWidget(panel)
         layout.addStretch()
 
 
-def _section_label(text: str) -> QLabel:
-    lbl = QLabel(text)
-    lbl.setObjectName("section_header")
-    return lbl
+# ─────────────────────────────────────────────────────────────────
+class AgregarVehiculoDialog(QDialog):
+    """Formulario para registrar un nuevo vehículo. """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Agregar Vehículo")
+        self.setMinimumWidth(420)
+        self.setModal(True)
+        self._build_ui()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(12)
+
+        title = QLabel("Registrar Nuevo Vehículo")
+        title.setObjectName("dialog_title")
+        layout.addWidget(title)
+
+        def lbl(t):
+            l = QLabel(t)
+            l.setObjectName("form_label")
+            return l
+
+        layout.addWidget(lbl("Patente:"))
+        self._patente = QLineEdit()
+        self._patente.setPlaceholderText("Ej: XKRT-99")
+        layout.addWidget(self._patente)
+
+        layout.addWidget(lbl("Tipo:"))
+        self._tipo = QComboBox()
+        self._tipo.addItems(["Camioneta", "Furgón", "Camión liviano", "Sprinter"])
+        layout.addWidget(self._tipo)
+
+        layout.addWidget(lbl("Modelo:"))
+        self._modelo = QLineEdit()
+        self._modelo.setPlaceholderText("Ej: Toyota Hilux")
+        layout.addWidget(self._modelo)
+
+        layout.addWidget(lbl("Capacidad (kg):"))
+        self._cap = QSpinBox()
+        self._cap.setRange(100, 10000)
+        self._cap.setSuffix(" kg")
+        self._cap.setValue(1000)
+        layout.addWidget(self._cap)
+
+        layout.addWidget(lbl("Ubicación:"))
+        self._ubic = QComboBox()
+        self._ubic.addItems(["Temuco", "Santiago", "Concepción", "Los Ángeles", "Valparaíso"])
+        layout.addWidget(self._ubic)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_c = QPushButton("Cancelar")
+        btn_c.setObjectName("btn_secondary")
+        btn_c.clicked.connect(self.reject)
+        btn_ok = QPushButton("Agregar")
+        btn_ok.setObjectName("btn_primary")
+        btn_ok.clicked.connect(self.accept)
+        btn_row.addWidget(btn_c)
+        btn_row.addWidget(btn_ok)
+        layout.addLayout(btn_row)
+
+    def get_data(self) -> dict:
+        return {
+            "patente":      self._patente.text().upper() or "NUEVA-01",
+            "tipo":         self._tipo.currentText(),
+            "modelo":       self._modelo.text() or "Sin especificar",
+            "capacidad_kg": self._cap.value(),
+            "ubicacion":    self._ubic.currentText(),
+        }

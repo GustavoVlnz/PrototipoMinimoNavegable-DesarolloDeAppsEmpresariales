@@ -354,6 +354,17 @@ QPushButton#btn_table_action:pressed {
     background-color: #16324C;
 }
 
+QPushButton#btn_table_action {
+    background-color: transparent;
+    color: #60A5FA;
+    border: 1px solid #1E3A5C;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+QPushButton#btn_table_action:hover 
+    { background-color: rgba(30,95,195,0.25); }
 /* ───────────────────────────────────────────────
    STATUS BADGES 
 ─────────────────────────────────────────────── */

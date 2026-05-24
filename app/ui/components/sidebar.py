@@ -7,7 +7,7 @@ Muestra el logo, menú de módulos y usuario activo.
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFrame, QSpacerItem, QSizePolicy
-)
+)   
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 
 import qtawesome as qta
@@ -61,7 +61,7 @@ class SidebarWidget(QWidget):
 
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        self.setFixedWidth(230)
+        self.setFixedWidth(280)
 
         self._active_index = 0
         self._buttons: list[QPushButton] = []
@@ -72,7 +72,7 @@ class SidebarWidget(QWidget):
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(1)
 
         # ── Brand / Logo
         layout.addWidget(self._make_brand())
@@ -86,7 +86,7 @@ class SidebarWidget(QWidget):
         nav_layout = QVBoxLayout(nav_frame)
 
         nav_layout.setContentsMargins(0, 12, 0, 12)
-        nav_layout.setSpacing(2)
+        nav_layout.setSpacing(1)
 
         button_index = 0
 
@@ -135,7 +135,7 @@ class SidebarWidget(QWidget):
                 button_index += 1
 
             # Espacio entre categorías
-            nav_layout.addSpacing(12)
+            nav_layout.addSpacing(1)
 
         layout.addWidget(nav_frame)
 

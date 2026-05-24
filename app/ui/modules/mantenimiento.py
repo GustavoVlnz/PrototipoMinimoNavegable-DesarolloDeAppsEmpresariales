@@ -56,9 +56,22 @@ class MantenimientoView(QWidget):
 
         action_row = QHBoxLayout()
         action_row.addStretch()
-        self._btn_habilitar = QPushButton("Habilitar Vehículo (validación técnica)")
+
+        self._btn_revisar = QPushButton("Marcar En revisión")
+        self._btn_revisar.setObjectName("btn_primary")
+        self._btn_revisar.setVisible(False)
+        self._btn_revisar.clicked.connect(self._marcar_en_revision)
+        action_row.addWidget(self._btn_revisar)
+
+        self._btn_aprobar = QPushButton("Marcar Aprobada")
+        self._btn_aprobar.setObjectName("btn_warning")
+        self._btn_aprobar.setVisible(False)
+        self._btn_aprobar.clicked.connect(self._marcar_aprobada)
+        action_row.addWidget(self._btn_aprobar)
+
+        self._btn_habilitar = QPushButton("Habilitar Vehículo")
         self._btn_habilitar.setObjectName("btn_success")
-        self._btn_habilitar.setEnabled(False)
+        self._btn_habilitar.setVisible(False)
         self._btn_habilitar.clicked.connect(self._habilitar_vehiculo)
         action_row.addWidget(self._btn_habilitar)
         p_layout.addLayout(action_row)
@@ -83,8 +96,34 @@ class MantenimientoView(QWidget):
     def _on_row_clicked(self, row, _col):
         self._selected_row = row
         orden = self._ordenes[row]
-        puede = orden["estado"] in ("En proceso",)
-        self._btn_habilitar.setEnabled(puede)
+        estado = orden["estado"]
+        self._btn_revisar.setVisible(estado == "Pendiente")
+        self._btn_aprobar.setVisible(estado == "En revisión")
+        self._btn_habilitar.setVisible(estado == "Aprobada")
+
+    def _marcar_en_revision(self):
+        if self._selected_row < 0:
+            return
+        orden = self._ordenes[self._selected_row]
+        if orden["estado"] != "Pendiente":
+            return
+        orden["estado"] = "En revisión"
+        self._fill_table()
+        self._on_row_clicked(self._selected_row, 0)
+        QMessageBox.information(self, "Orden en revisión",
+                                f"Orden {orden['id']} pasó a 'En revisión'.")
+
+    def _marcar_aprobada(self):
+        if self._selected_row < 0:
+            return
+        orden = self._ordenes[self._selected_row]
+        if orden["estado"] != "En revisión":
+            return
+        orden["estado"] = "Aprobada"
+        self._fill_table()
+        self._on_row_clicked(self._selected_row, 0)
+        QMessageBox.information(self, "Orden aprobada",
+                                f"Orden {orden['id']} marcada como 'Aprobada'.")
 
     def _habilitar_vehiculo(self):
         if self._selected_row < 0:

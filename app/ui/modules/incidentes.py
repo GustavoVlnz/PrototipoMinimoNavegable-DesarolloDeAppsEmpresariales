@@ -68,11 +68,25 @@ class IncidentesView(QWidget):
         # Panel de acciones
         action_row = QHBoxLayout()
         action_row.addStretch()
+
+        self._btn_marcar_gestion = QPushButton("Marcar En gestión")
+        self._btn_marcar_gestion.setObjectName("btn_primary")
+        self._btn_marcar_gestion.setVisible(False)
+        self._btn_marcar_gestion.clicked.connect(self._marcar_en_gestion)
+        action_row.addWidget(self._btn_marcar_gestion)
+
+        self._btn_marcar_resuelto = QPushButton("Marcar Resuelto")
+        self._btn_marcar_resuelto.setObjectName("btn_warning")
+        self._btn_marcar_resuelto.setVisible(False)
+        self._btn_marcar_resuelto.clicked.connect(self._marcar_resuelto)
+        action_row.addWidget(self._btn_marcar_resuelto)
+
         self._btn_cerrar = QPushButton("Cerrar Incidente Seleccionado")
         self._btn_cerrar.setObjectName("btn_success")
-        self._btn_cerrar.setEnabled(False)
+        self._btn_cerrar.setVisible(False)
         self._btn_cerrar.clicked.connect(self._cerrar_incidente)
         action_row.addWidget(self._btn_cerrar)
+
         p_layout.addLayout(action_row)
 
         c_layout.addWidget(panel)
@@ -96,9 +110,45 @@ class IncidentesView(QWidget):
 
     def _on_row_clicked(self, row, _col):
         self._selected_row = row
-        inc = self._incidentes[row]
-        puede_cerrar = inc["estado"] in ("Registrado", "En gestión", "Resuelto")
-        self._btn_cerrar.setEnabled(puede_cerrar)
+        self._update_action_buttons()
+
+    def _update_action_buttons(self):
+        if self._selected_row < 0:
+            self._btn_marcar_gestion.setVisible(False)
+            self._btn_marcar_resuelto.setVisible(False)
+            self._btn_cerrar.setVisible(False)
+            return
+
+        inc = self._incidentes[self._selected_row]
+        estado = inc["estado"]
+        self._btn_marcar_gestion.setVisible(estado == "Registrado")
+        self._btn_marcar_resuelto.setVisible(estado == "En gestión")
+        self._btn_cerrar.setVisible(estado == "Resuelto")
+        self._btn_cerrar.setEnabled(estado == "Resuelto")
+
+    def _marcar_en_gestion(self):
+        if self._selected_row < 0:
+            return
+        inc = self._incidentes[self._selected_row]
+        if inc["estado"] != "Registrado":
+            return
+        inc["estado"] = "En gestión"
+        self._fill_table()
+        self._update_action_buttons()
+        QMessageBox.information(self, "Incidente en gestión",
+                                f"Incidente {inc['id']} pasó a 'En gestión'.")
+
+    def _marcar_resuelto(self):
+        if self._selected_row < 0:
+            return
+        inc = self._incidentes[self._selected_row]
+        if inc["estado"] != "En gestión":
+            return
+        inc["estado"] = "Resuelto"
+        self._fill_table()
+        self._update_action_buttons()
+        QMessageBox.information(self, "Incidente resuelto",
+                                f"Incidente {inc['id']} marcado como 'Resuelto'.")
 
     def _cerrar_incidente(self):
         if self._selected_row < 0:

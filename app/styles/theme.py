@@ -85,17 +85,17 @@ QPushButton#nav_btn {
 
     text-align: left;
 
-    padding: 12px 16px;
-    padding-left: 18px;
+    padding: 10px 16px 8px 18px;
+    min-height: 38px;
 
     font-size: 14px;
     font-weight: 600;
 
     border-radius: 10px;
 
-    margin: 2px 10px;
+    margin: 1px 3px;
 
-    icon-size: 20px;
+    qproperty-iconSize: 20px 20px;
 }
 
 QPushButton#nav_btn:hover {

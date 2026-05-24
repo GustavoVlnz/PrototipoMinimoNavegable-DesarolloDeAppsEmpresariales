@@ -199,7 +199,19 @@ def make_table(columns: list[str], row_height: int = 44) -> QTableWidget:
     table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
 
     # Interactive: permite que set_table_item ajuste anchos de columnas con badges
-    # sin ser sobreescrito por ResizeToContents que ignora setCellWidget
+    # sin ser sobreescrito por ResizeToContents que ignora setCellWidget.
+    # Guardamos anchos mínimos para luego re-aplicarlos si el módulo llama
+    # a resizeColumnsToContents después de insertar el contenido.
+    table._badge_min_widths = {}
+    original_resize_cols = table.resizeColumnsToContents
+
+    def resize_columns_to_contents():
+        original_resize_cols()
+        for col, min_width in table._badge_min_widths.items():
+            if table.columnWidth(col) < min_width:
+                table.setColumnWidth(col, min_width)
+
+    table.resizeColumnsToContents = resize_columns_to_contents
     table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
     table.horizontalHeader().setStretchLastSection(True)
 
@@ -219,8 +231,9 @@ def set_table_item(table: QTableWidget, row: int, col: int,
 
         # Calcular ancho mínimo real basado en el texto + padding del badge
         text_w = badge_lbl.fontMetrics().horizontalAdvance(text)
-        needed_w = text_w + 42
-        container_w = needed_w + 24
+        needed_w = text_w + 52
+        styled_w = badge_lbl.sizeHint().width()
+        container_w = max(needed_w, styled_w + 24)
 
         container = QWidget()
         container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -236,6 +249,9 @@ def set_table_item(table: QTableWidget, row: int, col: int,
         current_w = table.columnWidth(col)
         if current_w < container_w:
             table.setColumnWidth(col, container_w)
+        if hasattr(table, '_badge_min_widths'):
+            previous = table._badge_min_widths.get(col, 0)
+            table._badge_min_widths[col] = max(previous, container_w)
 
     else:
         item = QTableWidgetItem(text)

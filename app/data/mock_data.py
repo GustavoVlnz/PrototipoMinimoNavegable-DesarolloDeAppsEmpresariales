@@ -372,7 +372,7 @@ MANTENIMIENTO = [
         "vehiculo_patente": "KPNW-88",
         "tipo": "Correctiva",
         "descripcion": "Reparación sistema de frenos — falla crítica en ruta",
-        "estado": "En proceso",
+        "estado": "En revisión",
         "generado": "2026-05-20 10:45",
         "tecnico": "Jorge Fernández",
         "prioridad": "Alta",

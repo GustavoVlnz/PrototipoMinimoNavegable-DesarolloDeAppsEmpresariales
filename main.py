@@ -1,7 +1,3 @@
-"""
-LoncoExpress - Sistema de Gestión de Flota Vehicular
-Punto de entrada principal de la aplicación.
-"""
 
 import sys
 from PyQt6.QtWidgets import QApplication

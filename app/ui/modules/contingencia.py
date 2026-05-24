@@ -1,6 +1,6 @@
 """
 Módulo Contingencia — Protocolo manual ante caída del sistema.
-Actor: Todos los operadores.
+
 """
 
 from PyQt6.QtWidgets import (

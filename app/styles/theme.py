@@ -506,7 +506,7 @@ QWidget#content_area {
 """
 # Color constants for use in Python code
 COLORS = {
-    # Backgrounds oscuros (jerarquía de capas)
+    # Backgrounds oscuros 
     "navy":           "#050E1C",   # sidebar (más oscuro)
     "bg_main":        "#0D1B2E",   # fondo general de vistas
     "bg_topbar":      "#111F35",   # topbar
@@ -527,7 +527,7 @@ COLORS = {
     "text_header":    "#A8C4E0",   # texto en cabeceras de tabla
     "text_white":     "#FFFFFF",   # texto de énfasis máximo
 
-    # Status colors (se usan en badges con sus propios fondos)
+    # Status colors
     "green":          "#16A34A",
     "green_bg":       "#DCFCE7",
     "red":            "#B91C1C",

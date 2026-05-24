@@ -1,6 +1,6 @@
 """
 Módulo Mantenimiento — Órdenes de mantención y habilitación de vehículos.
-Actor principal: Técnico de Mantención, Encargado de Flota.
+
 """
 
 from PyQt6.QtWidgets import (

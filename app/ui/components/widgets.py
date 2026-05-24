@@ -93,7 +93,7 @@ class TopBar(QWidget):
         super().__init__(parent)
         self.setObjectName("topbar")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setFixedHeight(83)
+        self.setFixedHeight(84)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(28, 8, 28, 8)

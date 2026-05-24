@@ -1,6 +1,6 @@
 """
 Módulo Reportes — Trazabilidad, historial e incumplimientos.
-Actor: Administrador General / Supervisor.
+
 """
 
 from PyQt6.QtWidgets import (

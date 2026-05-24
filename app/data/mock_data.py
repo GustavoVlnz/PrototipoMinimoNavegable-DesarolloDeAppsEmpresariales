@@ -1,7 +1,6 @@
 """
 Datos de prueba para el prototipo de LoncoExpress.
-Basado en los casos A, B y C descritos en los informes de Fase 1.
-Reemplazar con conexión real a BD en Fase 3.
+
 """
 
 from datetime import datetime, timedelta

@@ -1,6 +1,6 @@
 """
 Módulo Documentación — Control de vigencia documental de vehículos y conductores.
-Actor principal: Personal Administrativo.
+
 """
 
 from PyQt6.QtWidgets import (

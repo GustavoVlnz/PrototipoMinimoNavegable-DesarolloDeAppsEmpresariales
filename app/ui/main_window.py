@@ -46,7 +46,7 @@ class MainWindow(QMainWindow):
         self._stack.setObjectName("content_stack")
         root.addWidget(self._stack)
 
-        # Registrar módulos (mismo orden que NAV_ITEMS en sidebar.py)
+        # Registrar módulos
         self._pages = [
             DashboardView(),
             SolicitudesView(),

@@ -197,11 +197,6 @@ def make_table(columns: list[str], row_height: int = 44) -> QTableWidget:
     table.verticalHeader().setVisible(False)
     table.verticalHeader().setMinimumSectionSize(row_height)
     table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-
-    # Interactive: permite que set_table_item ajuste anchos de columnas con badges
-    # sin ser sobreescrito por ResizeToContents que ignora setCellWidget.
-    # Guardamos anchos mínimos para luego re-aplicarlos si el módulo llama
-    # a resizeColumnsToContents después de insertar el contenido.
     table._badge_min_widths = {}
     original_resize_cols = table.resizeColumnsToContents
 

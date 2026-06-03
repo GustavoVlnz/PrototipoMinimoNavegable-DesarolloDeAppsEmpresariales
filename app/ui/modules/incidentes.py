@@ -1,8 +1,3 @@
-"""
-Módulo Incidentes — Reporte y gestión de incidencias en ruta.
-Actores: Conductor, Supervisor Operacional.
-"""
-
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QDialog, QComboBox,

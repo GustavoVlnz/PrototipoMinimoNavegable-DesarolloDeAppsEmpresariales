@@ -1,2 +1,4 @@
 
 *.pyc
+
+app/ui/modules/__pycache__/

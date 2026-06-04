@@ -1,7 +1,6 @@
 """
 solicitudes_queries.py
 Todas las consultas a la base de datos relacionadas con solicitudes de transporte.
-
 """
 
 from datetime import datetime, date
@@ -39,7 +38,6 @@ def _estado_raw(estado_display: str) -> str:
 # ─── Helper ORM → dict ────────────────────────────────────────────────────────
 
 def _solicitud_a_dict(sol: Solicitud) -> dict:
-
     return {
         "id":          sol.folio(),
         "id_numerico": sol.id,
@@ -57,10 +55,6 @@ def _solicitud_a_dict(sol: Solicitud) -> dict:
 # ─── Query base reutilizable ──────────────────────────────────────────────────
 
 def _cargar_solicitudes(db, estado_bd: str | None = None) -> list[Solicitud]:
-    """
-    Query base con aliases para los dos joins a la tabla sucursales.
-    Fuerza la carga de relaciones dentro de la sesión antes de cerrarla.
-    """
     SucOrigen  = aliased(Sucursal)
     SucDestino = aliased(Sucursal)
 
@@ -76,7 +70,6 @@ def _cargar_solicitudes(db, estado_bd: str | None = None) -> list[Solicitud]:
 
     solicitudes = q.all()
 
-    # Forzar carga de todas las relaciones dentro de la sesión activa
     for s in solicitudes:
         _ = s.sucursal_origen
         _ = s.sucursal_destino
@@ -88,21 +81,15 @@ def _cargar_solicitudes(db, estado_bd: str | None = None) -> list[Solicitud]:
 # ─── Consultas ────────────────────────────────────────────────────────────────
 
 def obtener_todas() -> list[dict]:
-    """Retorna todas las solicitudes ordenadas por fecha descendente."""
     with get_session() as db:
         return [_solicitud_a_dict(s) for s in _cargar_solicitudes(db)]
 
 
 def obtener_por_id(solicitud_id: int) -> dict | None:
-    """
-    Busca una solicitud por su ID numérico.
-    Retorna el diccionario con todos sus datos o None si no existe.
-    """
     with get_session() as db:
         sol = db.query(Solicitud).filter(Solicitud.id == solicitud_id).first()
         if not sol:
             return None
-        # Forzar carga de relaciones
         _ = sol.sucursal_origen
         _ = sol.sucursal_destino
         _ = sol.solicitante
@@ -110,26 +97,16 @@ def obtener_por_id(solicitud_id: int) -> dict | None:
 
 
 def filtrar_por_estado(estado_display: str) -> list[dict]:
-    """
-    Retorna solicitudes que coincidan con el estado del filtro de la UI.
-    Pasar "Todos" retorna todas.
-    """
     if estado_display == "Todos":
         return obtener_todas()
-
     with get_session() as db:
         return [_solicitud_a_dict(s)
                 for s in _cargar_solicitudes(db, _estado_raw(estado_display))]
 
 
 def contar_hoy() -> int:
-    """
-    Cuenta cuántas solicitudes fueron creadas hoy.
-    Usado por el TopBar para mostrar 'N solicitudes registradas hoy'.
-    """
     hoy_inicio = datetime.combine(date.today(), datetime.min.time())
     hoy_fin    = datetime.combine(date.today(), datetime.max.time())
-
     with get_session() as db:
         return (
             db.query(func.count(Solicitud.id))
@@ -145,10 +122,11 @@ def crear(
     destino: str,
     carga_kg: int,
     prioridad: str,
-    solicitante_nombre: str,
+    creado_por_id: int,             # ID del Encargado de Sucursal — ya no es texto libre
 ) -> dict | None:
     """
     Crea una nueva solicitud en la base de datos.
+    creado_por_id debe ser el id de un usuario con rol Encargado_Sucursal.
     Retorna el diccionario de la solicitud creada, o None si falló.
     """
     with get_session() as db:
@@ -158,21 +136,18 @@ def crear(
         if not suc_origen or not suc_destino:
             return None
 
-        usuario = db.query(Usuario).filter(Usuario.nombre == solicitante_nombre).first()
-
         nueva = Solicitud(
             sucursal_origen_id=suc_origen.id,
             sucursal_destino_id=suc_destino.id,
             carga_kg=carga_kg,
             prioridad=prioridad,
             estado_solicitud="Creada",
-            creado_por=usuario.id if usuario else None,
+            creado_por=creado_por_id,
             fecha_creacion=datetime.now(),
         )
         db.add(nueva)
         db.flush()
 
-        # Cargar relaciones antes de cerrar la sesión
         _ = nueva.sucursal_origen
         _ = nueva.sucursal_destino
         _ = nueva.solicitante
@@ -181,10 +156,6 @@ def crear(
 
 
 def actualizar_estado(solicitud_id: int, nuevo_estado_display: str) -> bool:
-    """
-    Cambia el estado de una solicitud.
-    Retorna True si fue exitoso.
-    """
     with get_session() as db:
         sol = db.query(Solicitud).filter(Solicitud.id == solicitud_id).first()
         if not sol:
@@ -194,10 +165,6 @@ def actualizar_estado(solicitud_id: int, nuevo_estado_display: str) -> bool:
 
 
 def reprogramar(solicitud_id: int, nueva_prioridad: str) -> bool:
-    """
-    Cambia estado a Reprogramada y actualiza la prioridad en una sola operación.
-    Equivale al botón «Reprogramar» del diálogo de detalle.
-    """
     with get_session() as db:
         sol = db.query(Solicitud).filter(Solicitud.id == solicitud_id).first()
         if not sol:
@@ -208,17 +175,32 @@ def reprogramar(solicitud_id: int, nueva_prioridad: str) -> bool:
 
 
 def cancelar(solicitud_id: int) -> bool:
-    """Marca la solicitud como Cancelada."""
     return actualizar_estado(solicitud_id, "Cancelada")
 
 
 # ─── Auxiliares para la UI ────────────────────────────────────────────────────
 
 def obtener_sucursales() -> list[str]:
-    """
-    Retorna los nombres de todas las sucursales.
-    Usado por NuevaSolicitudDialog para poblar los ComboBox de origen/destino.
-    """
+    """Retorna nombres de todas las sucursales para los ComboBox de origen/destino."""
     with get_session() as db:
         rows = db.query(Sucursal.nombre).order_by(Sucursal.nombre).all()
         return [r.nombre for r in rows]
+
+
+def obtener_encargados_sucursal() -> list[dict]:
+    """
+    Retorna id y nombre de los usuarios con rol Encargado_Sucursal activos.
+    Usado por NuevaSolicitudDialog para poblar el selector de encargado solicitante.
+    Solo el Encargado de Sucursal puede generar solicitudes (Paso 1 del flujo).
+    """
+    with get_session() as db:
+        rows = (
+            db.query(Usuario.id, Usuario.nombre)
+            .filter(
+                Usuario.rol    == "Encargado_Sucursal",
+                Usuario.activo == True,
+            )
+            .order_by(Usuario.nombre)
+            .all()
+        )
+        return [{"id": r.id, "nombre": r.nombre} for r in rows]

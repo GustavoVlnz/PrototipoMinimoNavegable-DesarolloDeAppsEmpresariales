@@ -4,9 +4,11 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 from app.ui.main_window import MainWindow
 from app.styles.theme import APP_STYLESHEET
+from app.data.database import init_db
 
 
 def main():
+    init_db()
     app = QApplication(sys.argv)
     app.setApplicationName("LoncoExpress - Gestión de Flota")
     app.setOrganizationName("LoncoExpress")

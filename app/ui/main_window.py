@@ -4,9 +4,9 @@ Ensambla el sidebar + topbar + stack de módulos.
 """
 
 from PyQt6.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QStackedWidget
-from PyQt6.QtCore import Qt
 
-from app.ui.components.sidebar import SidebarWidget   # nombre correcto de la clase
+from app.ui.components.sidebar import SidebarWidget
+from app.data.database import _SessionFactory  # ← sesión de larga vida para la UI
 
 # Módulos
 from app.ui.modules.dashboard      import DashboardView
@@ -24,9 +24,15 @@ from app.ui.modules.contingencia   import ContingenciaView
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        # Sesión única compartida por todos los módulos durante la vida de la app
+        self._db_session = _SessionFactory()
         self._build_ui()
 
-    # ──────────────────────────────────────────
+    def closeEvent(self, event):
+        """Cierra la sesión limpiamente al cerrar la ventana."""
+        self._db_session.close()
+        super().closeEvent(event)
+
     def _build_ui(self):
         central = QWidget()
         central.setObjectName("central")
@@ -46,13 +52,12 @@ class MainWindow(QMainWindow):
         self._stack.setObjectName("content_stack")
         root.addWidget(self._stack)
 
-        # Registrar módulos (mismo orden que NAV_ITEMS en sidebar.py)
         self._pages = [
             DashboardView(),
-            SolicitudesView(),
+            SolicitudesView(self._db_session),   
             VehiculosView(),
             ConductoresView(),
-            AsignacionesView(),
+            AsignacionesView(self._db_session), 
             IncidentesView(),
             MantenimientoView(),
             DocumentacionView(),
@@ -64,7 +69,6 @@ class MainWindow(QMainWindow):
 
         self._stack.setCurrentIndex(0)
 
-    # ──────────────────────────────────────────
     def _cambiar_pagina(self, index: int):
         if 0 <= index < self._stack.count():
             self._stack.setCurrentIndex(index)

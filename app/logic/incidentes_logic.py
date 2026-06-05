@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from app.data.mock_data import INCIDENTES
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTES
@@ -65,7 +63,7 @@ def reportar_incidente(
     tipo: str,
     gravedad: str,
     descripcion: str,
-    incidentes: list | None = None,
+    incidentes: list[dict],
 ) -> ResultadoOperacion:
     """
     Registra un nuevo incidente en la lista.
@@ -96,11 +94,9 @@ def reportar_incidente(
     if gravedad not in GRAVEDADES:
         return ResultadoOperacion(False, f"Gravedad inválida: {gravedad}")
 
-    fuente = incidentes if incidentes is not None else INCIDENTES
-
     # Generar ID único
     max_num = 0
-    for inc in fuente:
+    for inc in incidentes:
         try:
             num = int(inc.get("id", "INC-0").replace("INC-", ""))
             max_num = max(max_num, num)
@@ -125,7 +121,7 @@ def reportar_incidente(
         "supervisor": None,
     }
 
-    fuente.append(nuevo_incidente)
+    incidentes.append(nuevo_incidente)
 
     msg = f"Incidente {nuevo_id} reportado correctamente."
     if gravedad == "Crítica":
@@ -277,16 +273,15 @@ def acciones_disponibles(incidente: dict) -> list[str]:
     return acciones
 
 
-def incidentes_criticos(incidentes: list | None = None) -> list[dict]:
+def incidentes_criticos(incidentes: list[dict]) -> list[dict]:
     """Retorna incidentes con gravedad 'Crítica' que estén activos (no cerrados)."""
-    fuente = incidentes if incidentes is not None else INCIDENTES
     return [
-        inc for inc in fuente
+        inc for inc in incidentes
         if inc.get("gravedad") == "Crítica" and inc.get("estado") != "Cerrado"
     ]
 
 
-def resumen_incidentes(incidentes: list | None = None) -> dict:
+def resumen_incidentes(incidentes: list[dict]) -> dict:
     """
     Retorna un diccionario con conteos desglosados por estado.
 
@@ -298,16 +293,14 @@ def resumen_incidentes(incidentes: list | None = None) -> dict:
         - cerrados:       Count de estado 'Cerrado'
         - criticos_activos: Count de gravedad 'Crítica' y estado != 'Cerrado'
     """
-    fuente = incidentes if incidentes is not None else INCIDENTES
-
     resumen = {
-        "registrados": sum(1 for i in fuente if i.get("estado") == "Registrado"),
-        "en_analisis": sum(1 for i in fuente if i.get("estado") == "En Análisis"),
-        "en_gestion": sum(1 for i in fuente if i.get("estado") == "En gestión"),
-        "resueltos": sum(1 for i in fuente if i.get("estado") == "Resuelto"),
-        "cerrados": sum(1 for i in fuente if i.get("estado") == "Cerrado"),
+        "registrados": sum(1 for i in incidentes if i.get("estado") == "Registrado"),
+        "en_analisis": sum(1 for i in incidentes if i.get("estado") == "En Análisis"),
+        "en_gestion": sum(1 for i in incidentes if i.get("estado") == "En gestión"),
+        "resueltos": sum(1 for i in incidentes if i.get("estado") == "Resuelto"),
+        "cerrados": sum(1 for i in incidentes if i.get("estado") == "Cerrado"),
     }
 
-    resumen["criticos_activos"] = len(incidentes_criticos(fuente))
+    resumen["criticos_activos"] = len(incidentes_criticos(incidentes))
 
     return resumen

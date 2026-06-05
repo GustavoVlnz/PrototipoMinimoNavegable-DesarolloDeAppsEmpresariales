@@ -6,14 +6,20 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from app.ui.components.widgets import TopBar, make_table, set_table_item
-from app.data.mock_data import INCIDENTES, ASIGNACIONES
+from app.data.queries import incidentes_queries
+from app.logic import incidentes_logic
 
 
 class IncidentesView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._incidentes = list(INCIDENTES)
+        self._incidentes = []
+        self._cargar_incidentes()
         self._build_ui()
+
+    def _cargar_incidentes(self):
+        """Carga incidentes desde la base de datos."""
+        self._incidentes = incidentes_queries.obtener_todos_incidentes()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -127,11 +133,19 @@ class IncidentesView(QWidget):
         inc = self._incidentes[self._selected_row]
         if inc["estado"] != "Registrado":
             return
-        inc["estado"] = "En gestión"
-        self._fill_table()
-        self._update_action_buttons()
-        QMessageBox.information(self, "Incidente en gestión",
-                                f"Incidente {inc['id']} pasó a 'En gestión'.")
+        
+        incidente_id = inc.get("incidente_id")
+        ok = incidentes_queries.actualizar_estado_incidente(incidente_id, "En Gestion")
+        
+        if ok:
+            inc["estado"] = "En gestión"
+            self._fill_table()
+            self._update_action_buttons()
+            QMessageBox.information(self, "Incidente en gestión",
+                                    f"Incidente {inc['id']} pasó a 'En gestión'.")
+        else:
+            QMessageBox.warning(self, "Error",
+                               f"No se pudo actualizar el incidente.")
 
     def _marcar_resuelto(self):
         if self._selected_row < 0:
@@ -139,11 +153,19 @@ class IncidentesView(QWidget):
         inc = self._incidentes[self._selected_row]
         if inc["estado"] != "En gestión":
             return
-        inc["estado"] = "Resuelto"
-        self._fill_table()
-        self._update_action_buttons()
-        QMessageBox.information(self, "Incidente resuelto",
-                                f"Incidente {inc['id']} marcado como 'Resuelto'.")
+        
+        incidente_id = inc.get("incidente_id")
+        ok = incidentes_queries.actualizar_estado_incidente(incidente_id, "Resuelto")
+        
+        if ok:
+            inc["estado"] = "Resuelto"
+            self._fill_table()
+            self._update_action_buttons()
+            QMessageBox.information(self, "Incidente resuelto",
+                                    f"Incidente {inc['id']} marcado como 'Resuelto'.")
+        else:
+            QMessageBox.warning(self, "Error",
+                               f"No se pudo actualizar el incidente.")
 
     def _cerrar_incidente(self):
         if self._selected_row < 0:
@@ -155,33 +177,40 @@ class IncidentesView(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
-            inc["estado"] = "Cerrado"
-            self._fill_table()
-            self._btn_cerrar.setEnabled(False)
-            QMessageBox.information(self, "Incidente cerrado",
-                                    f"Incidente {inc['id']} cerrado formalmente.")
+            incidente_id = inc.get("incidente_id")
+            ok = incidentes_queries.actualizar_estado_incidente(incidente_id, "Cerrado")
+            
+            if ok:
+                inc["estado"] = "Cerrado"
+                self._fill_table()
+                self._btn_cerrar.setEnabled(False)
+                QMessageBox.information(self, "Incidente cerrado",
+                                        f"Incidente {inc['id']} cerrado formalmente.")
+            else:
+                QMessageBox.warning(self, "Error",
+                                   f"No se pudo cerrar el incidente.")
 
     def _reportar_incidente(self):
         dlg = ReportarIncidenteDialog(self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
-            nuevo = {
-                "id": f"INC-{len(self._incidentes) + 1:03d}",
-                "asignacion_id": data["asignacion_id"],
-                "vehiculo_patente": data["vehiculo_patente"],
-                "conductor": data["conductor"],
-                "tipo": data["tipo"],
-                "descripcion": data["descripcion"],
-                "gravedad": data["gravedad"],
-                "estado": "Registrado",
-                "hora_reporte": _now(),
-                "supervisor": "Felipe Rivas",
-                "resolucion": "",
-            }
-            self._incidentes.append(nuevo)
-            self._fill_table()
-            QMessageBox.information(self, "Incidente registrado",
-                                    f"Incidente {nuevo['id']} reportado. El supervisor ha sido notificado.")
+            
+            # Crear en BD usando queries
+            # TODO: Obtener asignacion_db_id desde asignacion_id
+            ok = incidentes_queries.crear_incidente(
+                asignacion_id=1,  # TODO: Mapear desde ID
+                clasificacion_gravedad=data["gravedad"].replace(" ", "_"),
+                descripcion_falla=data["descripcion"],
+            )
+            
+            if ok:
+                self._cargar_incidentes()
+                self._fill_table()
+                QMessageBox.information(self, "Incidente registrado",
+                                        f"Incidente reportado. El supervisor ha sido notificado.")
+            else:
+                QMessageBox.warning(self, "Error",
+                                   f"No se pudo registrar el incidente.")
 
 
 # ─────────────────────────────────────────────
@@ -209,8 +238,7 @@ class ReportarIncidenteDialog(QDialog):
 
         layout.addWidget(lbl("Asignación afectada:"))
         self._asignacion = QComboBox()
-        activas = [a["id"] for a in ASIGNACIONES if a["estado"] == "En ejecución"]
-        self._asignacion.addItems(activas or ["AS-003"])
+        self._asignacion.addItems(["AS-003", "AS-004", "AS-005"])  # TODO: Cargar de BD
         layout.addWidget(self._asignacion)
 
         layout.addWidget(lbl("Vehículo:"))

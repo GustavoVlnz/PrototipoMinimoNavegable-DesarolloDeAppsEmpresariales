@@ -1,6 +1,6 @@
 """
 Módulo Solicitudes
-
+app/ui/modules/solicitudes.py
 """
 
 from PyQt6.QtCore import Qt
@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame,
     QDialog, QComboBox, QSpinBox,
-    QLineEdit, QMessageBox,
+    QMessageBox,
 )
 
 from app.ui.components.widgets import (
@@ -16,25 +16,25 @@ from app.ui.components.widgets import (
     make_badge, make_action_button, make_info_frame,
 )
 from app.data.queries.solicitudes_queries import (
-    obtener_todas,
-    obtener_por_id,
     filtrar_por_estado,
     contar_hoy,
-    crear,
-    reprogramar,
-    cancelar,
+    obtener_por_id,
     obtener_sucursales,
+    obtener_encargados_sucursal,
+)
+from app.logic.solicitudes_service import (
+    puede_modificar,
+    validar_encargados_disponibles,
+    registrar_solicitud,
+    ejecutar_reprogramar,
+    ejecutar_cancelar,
 )
 
 
-_ESTADOS_ACTIVOS = ("Creada", "En evaluación", "Pendiente", "Reprogramada")
-
-
-# ─────────────────────────────────────────────────────────────────
 class SolicitudesView(QWidget):
-
-    def __init__(self, parent=None):
+    def __init__(self, db_session, parent=None):
         super().__init__(parent)
+        self.db_session = db_session  # ✓ FIX: guardar sesión
         self.setObjectName("content_area")
         self._build_ui()
 
@@ -57,7 +57,6 @@ class SolicitudesView(QWidget):
         c_layout.setContentsMargins(28, 24, 28, 28)
         c_layout.setSpacing(16)
 
-        # Filtro rápido
         filtro_row = QHBoxLayout()
         lbl_f = QLabel("Filtrar por estado:")
         lbl_f.setObjectName("form_label")
@@ -83,26 +82,22 @@ class SolicitudesView(QWidget):
         p_layout.addWidget(hint)
 
         cols = ["ID", "Origen", "Destino", "Carga (kg)",
-                "Prioridad", "Estado", "Creada", "Solicitante", "Acciones"]
+                "Prioridad", "Estado", "Creada", "Encargado", "Acciones"]
         self._table = make_table(cols)
         p_layout.addWidget(self._table)
 
         c_layout.addWidget(panel)
         layout.addWidget(content)
 
-        # Carga inicial desde la BD
         self._recargar()
 
-    # ── Helpers ──────────────────────────────────────────────────
-
     def _subtitulo(self) -> str:
-        n = contar_hoy()
+        n = contar_hoy(self.db_session)  # ✓ FIX: pasar sesión
         return f"{n} solicitud{'es' if n != 1 else ''} registrada{'s' if n != 1 else ''} hoy"
 
     def _recargar(self):
-        """Recarga tabla desde la BD respetando el filtro activo."""
         estado = self._filtro.currentText() if hasattr(self, "_filtro") else "Todos"
-        self._fill_table(filtrar_por_estado(estado))
+        self._fill_table(filtrar_por_estado(self.db_session, estado))  # ✓ FIX
 
     def _fill_table(self, datos: list[dict]):
         self._table.setRowCount(len(datos))
@@ -125,51 +120,46 @@ class SolicitudesView(QWidget):
 
         self._table.resizeColumnsToContents()
 
-    # ── Slots ─────────────────────────────────────────────────────
-
     def _filtrar(self, estado: str):
-        self._fill_table(filtrar_por_estado(estado))
+        self._fill_table(filtrar_por_estado(self.db_session, estado))  # ✓ FIX
 
     def _ver_detalle(self, id_numerico: int):
-        datos = obtener_por_id(id_numerico)
+        datos = obtener_por_id(self.db_session, id_numerico)  # ✓ FIX
         if not datos:
             QMessageBox.warning(self, "Error", "No se encontró la solicitud.")
             return
-        dlg = DetalleSolicitudDialog(datos, self)
+        dlg = DetalleSolicitudDialog(datos, self.db_session, self)  # ✓ FIX: pasar sesión
         if dlg.exec():
             self._recargar()
 
     def _nueva(self):
-        dlg = NuevaSolicitudDialog(self)
+        error = validar_encargados_disponibles(self.db_session)  # ya corregido antes
+        if error:
+            QMessageBox.warning(self, "Sin encargados", error)
+            return
+
+        encargados = obtener_encargados_sucursal(self.db_session)  # ✓ FIX
+        sucursales = obtener_sucursales(self.db_session)           # ✓ FIX
+        dlg = NuevaSolicitudDialog(encargados, sucursales, self)   # ✓ FIX: pasar datos precargados
         if dlg.exec() == QDialog.DialogCode.Accepted:
             form = dlg.get_data()
-            resultado = crear(
-                origen=form["origen"],
-                destino=form["destino"],
-                carga_kg=form["carga_kg"],
-                prioridad=form["prioridad"],
-                solicitante_nombre=form["solicitante"],
-            )
-            if resultado:
+            resultado, error = registrar_solicitud(self.db_session, **form)  # ✓ FIX
+            if error:
+                QMessageBox.critical(self, "Error", error)
+            else:
                 self._recargar()
                 QMessageBox.information(
                     self, "Solicitud registrada",
                     f"Solicitud {resultado['id']} registrada correctamente."
                 )
-            else:
-                QMessageBox.critical(
-                    self, "Error",
-                    "No se pudo registrar la solicitud.\n"
-                    "Verifica que origen y destino sean sucursales válidas."
-                )
 
 
-# ─────────────────────────────────────────────────────────────────
 class DetalleSolicitudDialog(QDialog):
 
-    def __init__(self, sol: dict, parent=None):
+    def __init__(self, sol: dict, db_session, parent=None):  # ✓ FIX: recibe sesión
         super().__init__(parent)
         self._sol = sol
+        self.db_session = db_session  # ✓ FIX: guardar sesión
         self.setWindowTitle(f"Solicitud {sol['id']}")
         self.setMinimumWidth(480)
         self.setModal(True)
@@ -180,7 +170,6 @@ class DetalleSolicitudDialog(QDialog):
         layout.setContentsMargins(28, 28, 28, 24)
         layout.setSpacing(14)
 
-        # Encabezado
         row = QHBoxLayout()
         title = QLabel(f"Solicitud  {self._sol['id']}")
         title.setObjectName("dialog_title")
@@ -189,18 +178,17 @@ class DetalleSolicitudDialog(QDialog):
         row.addWidget(make_badge(self._sol["estado"]))
         layout.addLayout(row)
 
-        # Info
         frame = QFrame()
         frame.setObjectName("panel")
         fl = QVBoxLayout(frame)
         fl.setContentsMargins(16, 12, 16, 12)
         fl.setSpacing(6)
         for lbl_txt, val_txt in [
-            ("Ruta",        f"{self._sol['origen']} → {self._sol['destino']}"),
-            ("Carga",       f"{self._sol['carga_kg']} kg"),
-            ("Prioridad",   self._sol["prioridad"]),
-            ("Solicitante", self._sol["solicitante"]),
-            ("Creada",      self._sol["creada"]),
+            ("Ruta",      f"{self._sol['origen']} → {self._sol['destino']}"),
+            ("Carga",     f"{self._sol['carga_kg']} kg"),
+            ("Prioridad", self._sol["prioridad"]),
+            ("Encargado", self._sol["solicitante"]),
+            ("Creada",    self._sol["creada"]),
         ]:
             r = QHBoxLayout()
             l = QLabel(lbl_txt + ":")
@@ -214,9 +202,7 @@ class DetalleSolicitudDialog(QDialog):
             fl.addLayout(r)
         layout.addWidget(frame)
 
-        # Acciones según estado
-        estado = self._sol["estado"]
-        if estado in _ESTADOS_ACTIVOS:
+        if puede_modificar(self._sol["estado"]):
             sec = QLabel("Acciones disponibles")
             sec.setObjectName("section_header")
             layout.addWidget(sec)
@@ -231,16 +217,15 @@ class DetalleSolicitudDialog(QDialog):
             )
             layout.addLayout(btn_row)
 
-        elif estado == "Confirmada":
+        elif self._sol["estado"] == "Confirmada":
             layout.addWidget(make_info_frame(
                 "Solicitud con asignación activa. Gestiona desde el módulo Asignaciones."
             ))
         else:
-            msg = QLabel(f"Estado «{estado}» — sin acciones disponibles.")
+            msg = QLabel(f"Estado «{self._sol['estado']}» — sin acciones disponibles.")
             msg.setObjectName("page_subtitle")
             layout.addWidget(msg)
 
-        # Cerrar
         close_row = QHBoxLayout()
         close_row.addStretch()
         btn_close = QPushButton("Cerrar")
@@ -249,20 +234,22 @@ class DetalleSolicitudDialog(QDialog):
         close_row.addWidget(btn_close)
         layout.addLayout(close_row)
 
-    # ── Acciones ──────────────────────────────────────────────────
-
     def _reprogramar(self):
         dlg = ReprogramarDialog(self._sol, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            ok = reprogramar(self._sol["id_numerico"], dlg.get_prioridad())
-            if ok:
+            error = ejecutar_reprogramar(
+                self.db_session,                # ✓ FIX
+                self._sol["id_numerico"],
+                dlg.get_prioridad(),
+            )
+            if error:
+                QMessageBox.critical(self, "Error", error)
+            else:
                 QMessageBox.information(
                     self, "Reprogramada",
                     f"Solicitud {self._sol['id']} reprogramada correctamente."
                 )
                 self.accept()
-            else:
-                QMessageBox.critical(self, "Error", "No se pudo reprogramar la solicitud.")
 
     def _cancelar(self):
         r = QMessageBox.question(
@@ -271,20 +258,22 @@ class DetalleSolicitudDialog(QDialog):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if r == QMessageBox.StandardButton.Yes:
-            ok = cancelar(self._sol["id_numerico"])
-            if ok:
+            error = ejecutar_cancelar(
+                self.db_session,        # ✓ FIX
+                self._sol["id_numerico"],
+            )
+            if error:
+                QMessageBox.critical(self, "Error", error)
+            else:
                 QMessageBox.information(
                     self, "Cancelada",
                     f"Solicitud {self._sol['id']} cancelada correctamente."
                 )
                 self.accept()
-            else:
-                QMessageBox.critical(self, "Error", "No se pudo cancelar la solicitud.")
 
 
-# ─────────────────────────────────────────────────────────────────
 class ReprogramarDialog(QDialog):
-
+    # Sin cambios — no toca BD directamente
     def __init__(self, sol: dict, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Reprogramar")
@@ -331,11 +320,12 @@ class ReprogramarDialog(QDialog):
         return self._prioridad.currentText()
 
 
-# ─────────────────────────────────────────────────────────────────
 class NuevaSolicitudDialog(QDialog):
 
-    def __init__(self, parent=None):
+    def __init__(self, encargados: list[dict], sucursales: list[str], parent=None):  # ✓ FIX: recibe datos precargados
         super().__init__(parent)
+        self._encargados = encargados
+        self._sucursales = sucursales  # ✓ FIX: ya no consulta BD internamente
         self.setWindowTitle("Nueva Solicitud")
         self.setMinimumWidth(420)
         self.setModal(True)
@@ -355,19 +345,16 @@ class NuevaSolicitudDialog(QDialog):
             l.setObjectName("form_label")
             return l
 
-        # Sucursales desde la BD
-        sucursales = obtener_sucursales()
-
         od = QHBoxLayout()
         col1, col2 = QVBoxLayout(), QVBoxLayout()
         col1.addWidget(lbl("Origen:"))
         self._origen = QComboBox()
-        self._origen.addItems(sucursales)
+        self._origen.addItems(self._sucursales)  # ✓ FIX: usa datos recibidos
         col1.addWidget(self._origen)
         col2.addWidget(lbl("Destino:"))
         self._destino = QComboBox()
-        self._destino.addItems(sucursales)
-        if len(sucursales) > 1:
+        self._destino.addItems(self._sucursales)  # ✓ FIX
+        if len(self._sucursales) > 1:
             self._destino.setCurrentIndex(1)
         col2.addWidget(self._destino)
         od.addLayout(col1)
@@ -386,10 +373,11 @@ class NuevaSolicitudDialog(QDialog):
         self._prioridad.addItems(["Alta", "Media", "Baja"])
         layout.addWidget(self._prioridad)
 
-        layout.addWidget(lbl("Solicitante:"))
-        self._solicitante = QLineEdit()
-        self._solicitante.setPlaceholderText("Nombre del encargado")
-        layout.addWidget(self._solicitante)
+        layout.addWidget(lbl("Encargado solicitante:"))
+        self._encargado = QComboBox()
+        for e in self._encargados:
+            self._encargado.addItem(e["nombre"], userData=e["id"])
+        layout.addWidget(self._encargado)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -398,25 +386,16 @@ class NuevaSolicitudDialog(QDialog):
         btn_c.clicked.connect(self.reject)
         btn_ok = QPushButton("Registrar")
         btn_ok.setObjectName("btn_primary")
-        btn_ok.clicked.connect(self._validar_y_aceptar)
+        btn_ok.clicked.connect(self.accept)
         btn_row.addWidget(btn_c)
         btn_row.addWidget(btn_ok)
         layout.addLayout(btn_row)
 
-    def _validar_y_aceptar(self):
-        if self._origen.currentText() == self._destino.currentText():
-            QMessageBox.warning(
-                self, "Datos inválidos",
-                "El origen y el destino no pueden ser la misma sucursal."
-            )
-            return
-        self.accept()
-
     def get_data(self) -> dict:
         return {
-            "origen":      self._origen.currentText(),
-            "destino":     self._destino.currentText(),
-            "carga_kg":    self._carga.value(),
-            "prioridad":   self._prioridad.currentText(),
-            "solicitante": self._solicitante.text().strip() or "Sin especificar",
+            "origen":        self._origen.currentText(),
+            "destino":       self._destino.currentText(),
+            "carga_kg":      self._carga.value(),
+            "prioridad":     self._prioridad.currentText(),
+            "creado_por_id": self._encargado.currentData(),
         }

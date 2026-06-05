@@ -1,14 +1,13 @@
-
 import sys
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt
 from app.ui.main_window import MainWindow
 from app.styles.theme import APP_STYLESHEET
 from app.data.database import init_db
-
+from app.data.seed import run_seed  
 
 def main():
     init_db()
+    run_seed() 
     app = QApplication(sys.argv)
     app.setApplicationName("LoncoExpress - Gestión de Flota")
     app.setOrganizationName("LoncoExpress")

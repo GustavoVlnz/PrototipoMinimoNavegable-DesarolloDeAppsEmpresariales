@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from app.data.mock_data import CONDUCTORES, ASIGNACIONES
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTES
@@ -251,47 +249,43 @@ def liberar_conductor(conductor: dict) -> ResultadoOperacion:
 # CONSULTAS / HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def conductores_disponibles(conductores: list | None = None) -> list[dict]:
+def conductores_disponibles(conductores: list[dict]) -> list[dict]:
     """Retorna la lista de conductores habilitados y en estado 'Disponible'."""
-    fuente = conductores if conductores is not None else CONDUCTORES
     return [
-        c for c in fuente
+        c for c in conductores
         if c.get("habilitado") and c.get("estado") == "Disponible"
     ]
 
 
-def conductores_por_sucursal(sucursal: str, conductores: list | None = None) -> list[dict]:
+def conductores_por_sucursal(sucursal: str, conductores: list[dict]) -> list[dict]:
     """Filtra conductores por sucursal."""
-    fuente = conductores if conductores is not None else CONDUCTORES
-    return [c for c in fuente if c.get("sucursal") == sucursal]
+    return [c for c in conductores if c.get("sucursal") == sucursal]
 
 
-def conductores_con_alerta_licencia(conductores: list | None = None) -> list[dict]:
+def conductores_con_alerta_licencia(conductores: list[dict]) -> list[dict]:
     """
     Retorna conductores cuya licencia está vencida o vence en los próximos
     DIAS_ALERTA_LICENCIA días.
     """
-    fuente = conductores if conductores is not None else CONDUCTORES
     resultado = []
-    for c in fuente:
+    for c in conductores:
         dias = dias_para_vencimiento_licencia(c)
         if dias is not None and dias <= DIAS_ALERTA_LICENCIA:
             resultado.append(c)
     return resultado
 
 
-def obtener_asignacion_activa(conductor: dict, asignaciones: list | None = None) -> Optional[dict]:
+def obtener_asignacion_activa(conductor: dict, asignaciones: list[dict]) -> Optional[dict]:
     """
     Busca y retorna el dict de la asignación activa del conductor, o None.
     """
     if not conductor.get("asignacion_activa"):
         return None
-    fuente = asignaciones if asignaciones is not None else ASIGNACIONES
     asig_id = conductor["asignacion_activa"]
-    return next((a for a in fuente if a.get("id") == asig_id), None)
+    return next((a for a in asignaciones if a.get("id") == asig_id), None)
 
 
-def resumen_conductores(conductores: list | None = None) -> dict:
+def resumen_conductores(conductores: list[dict]) -> dict:
     """
     Retorna un dict con conteos rápidos para los KPIs del módulo.
 
@@ -305,12 +299,11 @@ def resumen_conductores(conductores: list | None = None) -> dict:
             "con_alerta_licencia": 2,
         }
     """
-    fuente = conductores if conductores is not None else CONDUCTORES
     return {
-        "total": len(fuente),
-        "disponibles":  sum(1 for c in fuente if c.get("estado") == "Disponible"),
-        "asignados":    sum(1 for c in fuente if c.get("estado") == "Asignado"),
-        "en_descanso":  sum(1 for c in fuente if c.get("estado") == "En descanso"),
-        "no_habilitados": sum(1 for c in fuente if not c.get("habilitado")),
-        "con_alerta_licencia": len(conductores_con_alerta_licencia(fuente)),
+        "total": len(conductores),
+        "disponibles":  sum(1 for c in conductores if c.get("estado") == "Disponible"),
+        "asignados":    sum(1 for c in conductores if c.get("estado") == "Asignado"),
+        "en_descanso":  sum(1 for c in conductores if c.get("estado") == "En descanso"),
+        "no_habilitados": sum(1 for c in conductores if not c.get("habilitado")),
+        "con_alerta_licencia": len(conductores_con_alerta_licencia(conductores)),
     }

@@ -9,15 +9,21 @@ from app.ui.components.widgets import (
     TopBar, make_table, set_table_item,
     make_badge, KpiCard, make_action_button, make_info_frame,
 )
-from app.data.mock_data import CONDUCTORES
+from app.data.queries import conductores_queries
+from app.logic import conductores_logic
 
 
 class ConductoresView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._conductores = list(CONDUCTORES)
+        self._conductores = []
+        self._cargar_conductores()
         self._build_ui()
+
+    def _cargar_conductores(self):
+        """Carga conductores desde la base de datos."""
+        self._conductores = conductores_queries.obtener_todos_conductores()
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -63,14 +69,14 @@ class ConductoresView(QWidget):
     def _build_kpis(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(12)
-        disp    = sum(1 for c in self._conductores if c["estado"] == "Disponible")
-        asig    = sum(1 for c in self._conductores if c["estado"] == "Asignado")
-        desc    = sum(1 for c in self._conductores if c["estado"] == "En descanso")
-        no_hab  = sum(1 for c in self._conductores if not c["habilitado"])
-        row.addWidget(KpiCard("Disponibles",    disp,   color="#16A34A"))
-        row.addWidget(KpiCard("Asignados",      asig,   color="#1E5FC3"))
-        row.addWidget(KpiCard("En descanso",    desc,   color="#D97706"))
-        row.addWidget(KpiCard("No habilitados", no_hab, color="#DC2626"))
+        
+        # Usar la función de logic para obtener resumen
+        resumen = conductores_logic.resumen_conductores(self._conductores)
+        
+        row.addWidget(KpiCard("Disponibles",    resumen["disponibles"],      color="#16A34A"))
+        row.addWidget(KpiCard("Asignados",      resumen["asignados"],        color="#1E5FC3"))
+        row.addWidget(KpiCard("En descanso",    resumen["en_descanso"],      color="#D97706"))
+        row.addWidget(KpiCard("No habilitados", resumen["no_habilitados"],   color="#DC2626"))
         row.addStretch()
         return row
 
@@ -82,10 +88,10 @@ class ConductoresView(QWidget):
             set_table_item(self._table, r, 0, c["nombre"])
             set_table_item(self._table, r, 1, c["rut"])
             set_table_item(self._table, r, 2, c["estado"], badge=True)
-            set_table_item(self._table, r, 3, c["licencia"])
+            set_table_item(self._table, r, 3, c["tipo_licencia"])
             set_table_item(self._table, r, 4, c["licencia_vence"])
             set_table_item(self._table, r, 5, c["sucursal"])
-            set_table_item(self._table, r, 6, c["asignacion_activa"] or "—")
+            set_table_item(self._table, r, 6, c.get("asignacion_activa") or "—")
 
             btn = QPushButton("Gestionar")
             btn.setObjectName("btn_table_action")
@@ -100,6 +106,8 @@ class ConductoresView(QWidget):
     def _ver_detalle(self, idx: int):
         dlg = DetalleConductorDialog(self._conductores[idx], self)
         if dlg.exec():
+            # Recargar después de cambios
+            self._cargar_conductores()
             self._fill_table()
 
     # ── Agregar ───────────────────────────────────────────────────
@@ -107,14 +115,9 @@ class ConductoresView(QWidget):
     def _agregar(self):
         dlg = AgregarConductorDialog(self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            data = dlg.get_data()
-            data["estado"]           = "Disponible"
-            data["habilitado"]       = True
-            data["asignacion_activa"] = None
-            self._conductores.append(data)
-            self._fill_table()
             QMessageBox.information(self, "Conductor agregado",
-                                    f"{data['nombre']} registrado correctamente.")
+                                    "Nuevo conductor registrado (funcionalidad pendiente BD).")
+            # TODO: Implementar creación en BD cuando esté disponible
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -151,12 +154,11 @@ class DetalleConductorDialog(QDialog):
         grid.setVerticalSpacing(8)
         fields = [
             ("RUT",             self._c["rut"]),
-            ("Licencia",        self._c["licencia"]),
+            ("Licencia",        self._c["tipo_licencia"]),
             ("Vence licencia",  self._c["licencia_vence"]),
             ("Sucursal",        self._c["sucursal"]),
-            ("Teléfono",        self._c.get("telefono", "—")),
             ("Habilitado",      "Sí" if self._c["habilitado"] else "No"),
-            ("Asignación",      self._c["asignacion_activa"] or "Sin asignación activa"),
+            ("Asignación",      self._c.get("asignacion_activa") or "Sin asignación activa"),
         ]
         for i, (k, v) in enumerate(fields):
             lbl_k = QLabel(k + ":")
@@ -216,37 +218,61 @@ class DetalleConductorDialog(QDialog):
         close_row.addWidget(btn_close)
         layout.addLayout(close_row)
 
-    # ── Acciones simuladas ────────────────────────────────────────
+    # ── Acciones (persist en BD vía queries) ────────────────────────────────────────
 
     def _habilitar(self):
-        self._c["habilitado"] = True
-        self._c["estado"]     = "Disponible"
-        QMessageBox.information(self, "Conductor habilitado",
-                                f"{self._c['nombre']} habilitado y disponible.")
-        self.accept()
+        conductor_id = self._c["conductor_id"]
+        ok = conductores_queries.habilitar_conductor(conductor_id)
+        if ok:
+            self._c["habilitado"] = True
+            self._c["estado"] = "Disponible"
+            QMessageBox.information(self, "Conductor habilitado",
+                                    f"{self._c['nombre']} habilitado y disponible.")
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Error",
+                               f"No se pudo habilitar a {self._c['nombre']}.")
 
     def _deshabilitar(self):
         r = QMessageBox.question(self, "Deshabilitar conductor",
                                  f"¿Deshabilitar a {self._c['nombre']}?",
                                  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if r == QMessageBox.StandardButton.Yes:
-            self._c["habilitado"] = False
-            self._c["estado"]     = "No habilitado"
-            QMessageBox.information(self, "Conductor deshabilitado",
-                                    f"{self._c['nombre']} deshabilitado.")
-            self.accept()
+            conductor_id = self._c["conductor_id"]
+            ok = conductores_queries.deshabilitar_conductor(conductor_id)
+            if ok:
+                self._c["habilitado"] = False
+                self._c["estado"] = "No Habilitado"
+                QMessageBox.information(self, "Conductor deshabilitado",
+                                        f"{self._c['nombre']} deshabilitado.")
+                self.accept()
+            else:
+                QMessageBox.warning(self, "Error",
+                                   f"No se pudo deshabilitar a {self._c['nombre']}.")
 
     def _descanso(self):
-        self._c["estado"] = "En descanso"
-        QMessageBox.information(self, "Estado actualizado",
-                                f"{self._c['nombre']} marcado en descanso.")
-        self.accept()
+        conductor_id = self._c["conductor_id"]
+        ok = conductores_queries.actualizar_estado_conductor(conductor_id, "En Descanso")
+        if ok:
+            self._c["estado"] = "En Descanso"
+            QMessageBox.information(self, "Estado actualizado",
+                                    f"{self._c['nombre']} marcado en descanso.")
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Error",
+                               f"No se pudo actualizar el estado de {self._c['nombre']}.")
 
     def _disponible(self):
-        self._c["estado"] = "Disponible"
-        QMessageBox.information(self, "Estado actualizado",
-                                f"{self._c['nombre']} disponible.")
-        self.accept()
+        conductor_id = self._c["conductor_id"]
+        ok = conductores_queries.actualizar_estado_conductor(conductor_id, "Disponible")
+        if ok:
+            self._c["estado"] = "Disponible"
+            QMessageBox.information(self, "Estado actualizado",
+                                    f"{self._c['nombre']} disponible.")
+            self.accept()
+        else:
+            QMessageBox.warning(self, "Error",
+                               f"No se pudo actualizar el estado de {self._c['nombre']}.")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -294,11 +320,6 @@ class AgregarConductorDialog(QDialog):
         self._sucursal.addItems(["Temuco", "Santiago", "Concepción", "Los Ángeles", "Valparaíso"])
         layout.addWidget(self._sucursal)
 
-        layout.addWidget(lbl("Teléfono:"))
-        self._telefono = QLineEdit()
-        self._telefono.setPlaceholderText("Ej: +56 9 1234 5678")
-        layout.addWidget(self._telefono)
-
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         btn_c = QPushButton("Cancelar")
@@ -316,7 +337,5 @@ class AgregarConductorDialog(QDialog):
             "nombre":         self._nombre.text() or "Nuevo Conductor",
             "rut":            self._rut.text()    or "00.000.000-0",
             "licencia":       self._licencia.currentText(),
-            "licencia_vence": "12/2027",
             "sucursal":       self._sucursal.currentText(),
-            "telefono":       self._telefono.text() or "—",
         }

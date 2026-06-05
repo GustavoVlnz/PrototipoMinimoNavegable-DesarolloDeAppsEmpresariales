@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from app.data.mock_data import DOCUMENTACION, CONDUCTORES, VEHICULOS
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSTANTES
@@ -149,23 +147,20 @@ def renovar_documento(doc: dict, nueva_fecha_vencimiento: str) -> ResultadoOpera
 # ALERTAS Y CONSULTAS
 # ─────────────────────────────────────────────────────────────────────────────
 
-def documentos_vencidos(documentos: list | None = None) -> list[dict]:
+def documentos_vencidos(documentos: list[dict]) -> list[dict]:
     """Retorna documentos en estado 'Vencida'."""
-    fuente = documentos if documentos is not None else DOCUMENTACION
-    return [d for d in fuente if d.get("estado") == "Vencida"]
+    return [d for d in documentos if d.get("estado") == "Vencida"]
 
 
-def documentos_por_vencer(documentos: list | None = None) -> list[dict]:
+def documentos_por_vencer(documentos: list[dict]) -> list[dict]:
     """Retorna documentos en estado 'Por vencer'."""
-    fuente = documentos if documentos is not None else DOCUMENTACION
-    return [d for d in fuente if d.get("estado") == "Por vencer"]
+    return [d for d in documentos if d.get("estado") == "Por vencer"]
 
 
-def documentos_criticos(documentos: list | None = None) -> list[dict]:
+def documentos_criticos(documentos: list[dict]) -> list[dict]:
     """Retorna vencidos + por vencer, ordenados por urgencia (días asc)."""
-    fuente = documentos if documentos is not None else DOCUMENTACION
     criticos = [
-        d for d in fuente
+        d for d in documentos
         if d.get("estado") in ("Vencida", "Por vencer")
     ]
     return sorted(criticos, key=lambda d: d.get("dias_restantes", 0))
@@ -188,7 +183,7 @@ def tipo_alerta(doc: dict) -> str:
     return "critica" if doc.get("estado") == "Vencida" else "advertencia"
 
 
-def resumen_documentacion(documentos: list | None = None) -> dict:
+def resumen_documentacion(documentos: list[dict]) -> dict:
     """
     Retorna un dict con conteos rápidos para KPIs del módulo y del dashboard.
 
@@ -201,13 +196,12 @@ def resumen_documentacion(documentos: list | None = None) -> dict:
             "criticos": 5,
         }
     """
-    fuente = documentos if documentos is not None else DOCUMENTACION
     return {
-        "total":      len(fuente),
-        "vigentes":   sum(1 for d in fuente if d.get("estado") == "Vigente"),
-        "por_vencer": sum(1 for d in fuente if d.get("estado") == "Por vencer"),
-        "vencidos":   sum(1 for d in fuente if d.get("estado") == "Vencida"),
-        "criticos":   sum(1 for d in fuente if d.get("estado") in ("Vencida", "Por vencer")),
+        "total":      len(documentos),
+        "vigentes":   sum(1 for d in documentos if d.get("estado") == "Vigente"),
+        "por_vencer": sum(1 for d in documentos if d.get("estado") == "Por vencer"),
+        "vencidos":   sum(1 for d in documentos if d.get("estado") == "Vencida"),
+        "criticos":   sum(1 for d in documentos if d.get("estado") in ("Vencida", "Por vencer")),
     }
 
 
@@ -215,7 +209,7 @@ def resumen_documentacion(documentos: list | None = None) -> dict:
 # INTEGRACIÓN: ALERTAS DE LICENCIAS DE CONDUCTORES
 # ─────────────────────────────────────────────────────────────────────────────
 
-def generar_documentos_conductores(conductores: list | None = None) -> list[dict]:
+def generar_documentos_conductores(conductores: list[dict]) -> list[dict]:
     """
     Genera entradas de documentación para las licencias de conductores,
     en el mismo formato que DOCUMENTACION, para poder incluirlas en el módulo.
@@ -223,9 +217,8 @@ def generar_documentos_conductores(conductores: list | None = None) -> list[dict
     Útil cuando se quiere mostrar licencias de conductores junto con
     los documentos de vehículos en una vista unificada.
     """
-    fuente = conductores if conductores is not None else CONDUCTORES
     docs = []
-    for c in fuente:
+    for c in conductores:
         vencimiento = c.get("licencia_vence", "")
         dias = calcular_dias_restantes(vencimiento)
         docs.append({
@@ -240,15 +233,15 @@ def generar_documentos_conductores(conductores: list | None = None) -> list[dict
 
 
 def documentos_completos(
-    documentos: list | None = None,
-    conductores: list | None = None,
+    documentos: list[dict],
+    conductores: list[dict],
     incluir_conductores: bool = True
 ) -> list[dict]:
     """
     Retorna la lista combinada de documentos de vehículos y (opcionalmente)
     de licencias de conductores, todo en el mismo formato.
     """
-    base = list(documentos if documentos is not None else DOCUMENTACION)
+    base = list(documentos)
     if incluir_conductores:
         base += generar_documentos_conductores(conductores)
     return base

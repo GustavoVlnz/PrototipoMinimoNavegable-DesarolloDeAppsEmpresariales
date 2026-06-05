@@ -3,23 +3,39 @@ from PyQt6.QtWidgets import (
     QPushButton, QDialog, QComboBox, QDateEdit, QMessageBox
 )
 from PyQt6.QtCore import Qt, QDate
+from datetime import date
+
 from app.ui.components.widgets import TopBar, make_table, set_table_item, make_alert_item
-from app.data.mock_data import DOCUMENTACION
+from app.data.queries import documentacion_queries
+from app.logic import documentacion_logic
 
 
 class DocumentacionView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._documentos = list(DOCUMENTACION)
+        self._documentos = []
+        self._cargar_documentos()
         self._build_ui()
+
+    def _cargar_documentos(self):
+        """Carga documentos desde la base de datos y calcula vigencia."""
+        documentos_bd = documentacion_queries.obtener_todos_documentos()
+        # Actualizar vigencia de cada documento
+        for d in documentos_bd:
+            dias = documentacion_logic.calcular_dias_restantes(d["vencimiento"])
+            d["dias_restantes"] = dias if dias is not None else 0
+            d["estado"] = documentacion_logic.calcular_estado_vigencia(dias)
+        self._documentos = documentos_bd
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        vencidos = sum(1 for d in self._documentos if d["estado"] == "Vencida")
-        por_vencer = sum(1 for d in self._documentos if d["estado"] == "Por vencer")
+        # Usar lógica para obtener resumen
+        resumen = documentacion_logic.resumen_documentacion(self._documentos)
+        vencidos = resumen["vencidos"]
+        por_vencer = resumen["por_vencer"]
 
         topbar = TopBar(
             "Documentación Legal",
@@ -50,15 +66,11 @@ class DocumentacionView(QWidget):
             ap_layout.setSpacing(6)
             ap_layout.addWidget(_header("Alertas Prioritarias"))
 
-            for d in self._documentos:
-                if d["estado"] in ("Vencida", "Por vencer"):
-                    tipo = "critica" if d["estado"] == "Vencida" else "advertencia"
-                    dias = d["dias_restantes"]
-                    if dias < 0:
-                        msg = f"{d['vehiculo']} — {d['doc_tipo']}: VENCIDO hace {abs(dias)} días"
-                    else:
-                        msg = f"{d['vehiculo']} — {d['doc_tipo']}: vence en {dias} días ({d['vencimiento']})"
-                    ap_layout.addWidget(make_alert_item(tipo, msg))
+            documentos_criticos = documentacion_logic.documentos_criticos(self._documentos)
+            for d in documentos_criticos:
+                tipo = documentacion_logic.tipo_alerta(d)
+                msg = documentacion_logic.mensaje_alerta(d)
+                ap_layout.addWidget(make_alert_item(tipo, msg))
 
             c_layout.addWidget(alert_panel)
 
@@ -103,20 +115,30 @@ class DocumentacionView(QWidget):
         if old_layout:
             self._clear_layout(old_layout)
             old_layout.deleteLater()
+        self._cargar_documentos()
         self._build_ui()
 
     def _registrar_renovacion(self):
         dlg = RegistrarRenovacionDialog(self._documentos, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             doc, fecha = dlg.get_data()
-            doc["vencimiento"] = fecha.toString("yyyy-MM-dd")
-            from datetime import date
-            dias = (date.fromisoformat(doc["vencimiento"]) - date.today()).days
-            doc["dias_restantes"] = dias
-            doc["estado"] = "Vigente" if dias >= 0 else "Por vencer"
-            self._refresh_ui()
-            QMessageBox.information(self, "Renovación registrada",
-                                    f"Documento {doc['doc_tipo']} de {doc['vehiculo']} actualizado al {doc['vencimiento']}.")
+            nueva_fecha_str = fecha.toString("yyyy-MM-dd")
+            
+            # Persistir en BD
+            documento_id = doc.get("documento_id")
+            ok = documentacion_queries.actualizar_fecha_vencimiento(documento_id, nueva_fecha_str)
+            
+            if ok:
+                self._refresh_ui()
+                QMessageBox.information(
+                    self, "Renovación registrada",
+                    f"Documento {doc['doc_tipo']} de {doc['vehiculo']} actualizado al {nueva_fecha_str}."
+                )
+            else:
+                QMessageBox.warning(
+                    self, "Error",
+                    f"No se pudo registrar la renovación. Intente nuevamente."
+                )
 
 
 class RegistrarRenovacionDialog(QDialog):

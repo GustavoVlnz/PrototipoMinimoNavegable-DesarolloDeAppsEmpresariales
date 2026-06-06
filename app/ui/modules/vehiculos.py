@@ -1,31 +1,41 @@
 """
-Módulo Vehículos — PMN.
-
+Módulo Vehículos — LoncoExpress.
+Refactorizado para usar vehiculos_queries y vehiculos_logic (sin mock_data).
 """
 
-from datetime import datetime
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QDialog, QComboBox,
     QSpinBox, QLineEdit, QMessageBox, QStackedWidget,
-    QGridLayout
+    QGridLayout,
 )
 
+from app.logic import vehiculos_logic
 from app.ui.components.widgets import (
     TopBar, make_table, set_table_item,
     make_badge, KpiCard, make_action_button, make_info_frame,
 )
-from app.data.mock_data import VEHICULOS
+from app.data.queries import vehiculos_queries
+from app.logic import vehiculos_logic
 
 
 class VehiculosView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._vehiculos = list(VEHICULOS)
+        self._vehiculos = []
+        self._cargar_vehiculos()
         self._stack = QStackedWidget()
         self._build_ui()
+
+    # ── Carga de datos ────────────────────────────────────────────
+
+    def _cargar_vehiculos(self):
+        """Carga vehículos desde la base de datos."""
+        self._vehiculos = vehiculos_queries.obtener_todos_vehiculos()
+
+    # ── Construcción UI ───────────────────────────────────────────
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -43,7 +53,7 @@ class VehiculosView(QWidget):
         self._stack.addWidget(self._make_lista())
         layout.addWidget(self._stack)
 
-    # ── Lista ─────────────────────────────────────────────────────
+    # ── Vista Lista ───────────────────────────────────────────────
 
     def _make_lista(self) -> QWidget:
         view = QWidget()
@@ -74,18 +84,29 @@ class VehiculosView(QWidget):
         return view
 
     def _build_kpis(self) -> QHBoxLayout:
+        resumen = vehiculos_logic.resumen_flota(self._vehiculos)
+        color_map = {
+            "disponibles":    "#16A34A",
+            "en_ruta":        "#1E5FC3",
+            "reservados":     "#1E5FC3",
+            "bloqueados":     "#DC2626",
+            "fuera_servicio": "#DC2626",
+            "en_mantencion":  "#D97706",
+        }
+        labels = {
+            "disponibles":    "Disponible",
+            "reservados":     "Reservado",
+            "en_ruta":        "En Ruta",
+            "en_mantencion":  "En Mantención",
+            "bloqueados":     "Bloqueado",
+            "fuera_servicio": "Fuera de Servicio",
+        }
         row = QHBoxLayout()
         row.setSpacing(12)
-        color_map = {
-            "Disponible": "#16A34A", "En Ruta": "#1E5FC3",
-            "Reservado": "#1E5FC3",  "Bloqueado": "#DC2626",
-            "Fuera de Servicio": "#DC2626", "En Mantención": "#D97706",
-        }
-        conteo = {}
-        for v in self._vehiculos:
-            conteo[v["estado"]] = conteo.get(v["estado"], 0) + 1
-        for estado, count in conteo.items():
-            row.addWidget(KpiCard(estado, count, color=color_map.get(estado, "#E8F0FE")))
+        for key, label in labels.items():
+            count = resumen.get(key, 0)
+            if count > 0:
+                row.addWidget(KpiCard(label, count, color=color_map.get(key, "#E8F0FE")))
         row.addStretch()
         return row
 
@@ -108,12 +129,15 @@ class VehiculosView(QWidget):
 
         self._table.resizeColumnsToContents()
 
-    # ── Detalle ───────────────────────────────────────────────────
+    # ── Vista Detalle ─────────────────────────────────────────────
 
     def _ver_detalle(self, row: int):
         v = self._vehiculos[row]
-        detail = VehiculoDetalleView(v, on_back=self._volver,
-                                     on_toggle=self._toggle_bloqueo)
+        detail = VehiculoDetalleView(
+            v,
+            on_back=self._volver,
+            on_toggle=self._toggle_bloqueo,
+        )
         if self._stack.count() > 1:
             self._stack.removeWidget(self._stack.widget(1))
         self._stack.addWidget(detail)
@@ -121,43 +145,66 @@ class VehiculosView(QWidget):
         self._topbar.findChild(QLabel, "page_title").setText(f"Vehículo {v['patente']}")
 
     def _volver(self):
+        self._cargar_vehiculos()
+        self._fill_table()
         self._stack.setCurrentIndex(0)
         self._topbar.findChild(QLabel, "page_title").setText("Gestión de Vehículos")
-        self._fill_table()
 
     # ── Acciones ──────────────────────────────────────────────────
 
-    def _toggle_bloqueo(self, patente: str):
-        for v in self._vehiculos:
-            if v["patente"] == patente:
-                if v["estado"] == "Disponible":
-                    v["estado"] = "Bloqueado"
-                    msg = f"Vehículo {patente} bloqueado."
-                elif v["estado"] == "Bloqueado":
-                    v["estado"] = "Disponible"
-                    msg = f"Vehículo {patente} desbloqueado."
-                else:
-                    msg = f"No se puede cambiar desde estado «{v['estado']}»."
-                QMessageBox.information(self, "Estado actualizado", msg)
-                self._fill_table()
-                self._volver()
-                break
+    def _toggle_bloqueo(self, vehiculo: dict):
+        resultado = vehiculos_logic.toggle_bloqueo(vehiculo)
+        if not resultado:
+            QMessageBox.warning(self, "Acción no permitida", resultado.mensaje)
+            return
+
+        nuevo_estado = vehiculos_logic.nuevo_estado_tras_toggle(vehiculo["estado"])
+        ok = vehiculos_queries.actualizar_estado_vehiculo(
+            vehiculo["vehiculo_id"], nuevo_estado
+        )
+        if ok:
+            QMessageBox.information(self, "Estado actualizado", resultado.mensaje)
+            self._volver()
+        else:
+            QMessageBox.critical(self, "Error", "No se pudo actualizar el estado en la base de datos.")
 
     def _agregar(self):
-        dlg = AgregarVehiculoDialog(self)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            data = dlg.get_data()
-            data["estado"]            = "Disponible"
-            data["ultima_mantencion"] = "Sin registro"
-            data["kilometraje"]       = 0
-            data["seguro_vence"]      = "12/2026"
-            data["permiso_vence"]     = "12/2026"
-            data["revision_tecnica"]  = "12/2026"
-            data["observacion"]       = ""
-            self._vehiculos.append(data)
-            self._fill_table()
-            QMessageBox.information(self, "Vehículo agregado",
-                                    f"Vehículo {data['patente']} registrado en la flota.")
+            sucursales = vehiculos_queries.obtener_sucursales()
+            if not sucursales:
+                QMessageBox.warning(self, "Sin sucursales",
+                                    "No hay sucursales registradas en la base de datos.")
+                return
+
+            dlg = AgregarVehiculoDialog(self, sucursales=sucursales)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                data = dlg.get_data()
+
+                resultado = vehiculos_logic.validar_nuevo_vehiculo(
+                    patente=data["patente"],
+                    tipo=data["tipo"],
+                    capacidad_kg=data["capacidad_kg"],
+                    vehiculos_existentes=self._vehiculos,
+                )
+                if not resultado:
+                    QMessageBox.warning(self, "Datos inválidos", resultado.mensaje)
+                    return
+
+                ok = vehiculos_queries.crear_vehiculo(
+                    patente=data["patente"],
+                    tipo=data["tipo"].replace(" ", "_"),
+                    marca_modelo=data["modelo"],
+                    capacidad_kg=data["capacidad_kg"],
+                    sucursal_nombre=data["ubicacion"],
+                )
+                if ok:
+                    self._cargar_vehiculos()
+                    self._fill_table()
+                    QMessageBox.information(
+                        self, "Vehículo agregado",
+                        f"Vehículo {data['patente']} registrado en la flota."
+                    )
+                else:
+                    QMessageBox.critical(self, "Error", "No se pudo registrar el vehículo.")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -176,7 +223,7 @@ class VehiculoDetalleView(QWidget):
         layout.setContentsMargins(28, 24, 28, 28)
         layout.setSpacing(16)
 
-        # Volver
+        # Botón volver
         back_row = QHBoxLayout()
         btn_back = QPushButton("← Volver al listado")
         btn_back.setObjectName("btn_secondary")
@@ -205,14 +252,14 @@ class VehiculoDetalleView(QWidget):
         grid = QGridLayout()
         grid.setSpacing(10)
         fields = [
-            ("Tipo",             self._v["tipo"]),
-            ("Capacidad",        f"{self._v['capacidad_kg']:,} kg"),
-            ("Kilometraje",      f"{self._v.get('kilometraje', 0):,} km"),
-            ("Ubicación",        self._v["ubicacion"]),
-            ("Últ. mantención",  self._v["ultima_mantencion"]),
-            ("Seguro vence",     self._v.get("seguro_vence", "—")),
-            ("Permiso circ.",    self._v.get("permiso_vence", "—")),
-            ("Rev. técnica",     self._v.get("revision_tecnica", "—")),
+            ("Tipo",            self._v["tipo"]),
+            ("Capacidad",       f"{self._v['capacidad_kg']:,} kg"),
+            ("Kilometraje",     f"{self._v.get('kilometraje', 0):,} km"),
+            ("Ubicación",       self._v["ubicacion"]),
+            ("Últ. mantención", self._v["ultima_mantencion"]),
+            ("Seguro vence",    self._v.get("seguro_vence", "—")),
+            ("Permiso circ.",   self._v.get("permiso_vence", "—")),
+            ("Rev. técnica",    self._v.get("revision_tecnica", "—")),
         ]
         for i, (k, val) in enumerate(fields):
             row, col = divmod(i, 2)
@@ -224,7 +271,7 @@ class VehiculoDetalleView(QWidget):
             grid.addWidget(lbl_v, row, col * 2 + 1)
         p.addLayout(grid)
 
-        # Observación si existe
+        # Observación
         if self._v.get("observacion"):
             p.addWidget(make_info_frame(f"⚠ {self._v['observacion']}"))
 
@@ -232,17 +279,18 @@ class VehiculoDetalleView(QWidget):
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         estado = self._v["estado"]
+
         if estado == "Disponible":
             p.addWidget(make_info_frame("Vehículo operativo y disponible para asignación."))
-            btn = QPushButton("  Bloquear Vehículo")
+            btn = QPushButton("Bloquear Vehículo")
             btn.setObjectName("btn_danger")
-            btn.clicked.connect(lambda: self._on_toggle(self._v["patente"]))
+            btn.clicked.connect(lambda: self._on_toggle(self._v))
             btn_row.addWidget(btn)
         elif estado == "Bloqueado":
             p.addWidget(make_info_frame("Vehículo bloqueado administrativamente."))
-            btn = QPushButton("  Desbloquear Vehículo")
+            btn = QPushButton("Desbloquear Vehículo")
             btn.setObjectName("btn_success")
-            btn.clicked.connect(lambda: self._on_toggle(self._v["patente"]))
+            btn.clicked.connect(lambda: self._on_toggle(self._v))
             btn_row.addWidget(btn)
         else:
             p.addWidget(make_info_frame(
@@ -256,13 +304,13 @@ class VehiculoDetalleView(QWidget):
 
 # ─────────────────────────────────────────────────────────────────
 class AgregarVehiculoDialog(QDialog):
-    """Formulario para registrar un nuevo vehículo. """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, sucursales: list[str] | None = None):
         super().__init__(parent)
         self.setWindowTitle("Agregar Vehículo")
         self.setMinimumWidth(420)
         self.setModal(True)
+        self._sucursales = sucursales or []
         self._build_ui()
 
     def _build_ui(self):
@@ -286,7 +334,7 @@ class AgregarVehiculoDialog(QDialog):
 
         layout.addWidget(lbl("Tipo:"))
         self._tipo = QComboBox()
-        self._tipo.addItems(["Camioneta", "Furgón", "Camión liviano", "Sprinter"])
+        self._tipo.addItems(vehiculos_logic.TIPOS_VEHICULO)
         layout.addWidget(self._tipo)
 
         layout.addWidget(lbl("Modelo:"))
@@ -296,14 +344,17 @@ class AgregarVehiculoDialog(QDialog):
 
         layout.addWidget(lbl("Capacidad (kg):"))
         self._cap = QSpinBox()
-        self._cap.setRange(100, 10000)
+        self._cap.setRange(100, 20000)
         self._cap.setSuffix(" kg")
         self._cap.setValue(1000)
         layout.addWidget(self._cap)
 
-        layout.addWidget(lbl("Ubicación:"))
+        layout.addWidget(lbl("Sucursal:"))
         self._ubic = QComboBox()
-        self._ubic.addItems(["Temuco", "Santiago", "Concepción", "Los Ángeles", "Valparaíso"])
+        self._ubic.addItems(self._sucursales)
+        if not self._sucursales:
+            self._ubic.setEnabled(False)
+            self._ubic.setPlaceholderText("Sin sucursales disponibles")
         layout.addWidget(self._ubic)
 
         btn_row = QHBoxLayout()
@@ -320,9 +371,9 @@ class AgregarVehiculoDialog(QDialog):
 
     def get_data(self) -> dict:
         return {
-            "patente":      self._patente.text().upper() or "NUEVA-01",
+            "patente":      self._patente.text().strip().upper() or "NUEVA-01",
             "tipo":         self._tipo.currentText(),
-            "modelo":       self._modelo.text() or "Sin especificar",
+            "modelo":       self._modelo.text().strip() or "Sin especificar",
             "capacidad_kg": self._cap.value(),
             "ubicacion":    self._ubic.currentText(),
         }

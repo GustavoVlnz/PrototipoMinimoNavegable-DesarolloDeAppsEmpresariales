@@ -258,7 +258,7 @@ class ReportarIncidenteDialog(QDialog):
 
         layout.addWidget(lbl("Gravedad:"))
         self._gravedad = QComboBox()
-        self._gravedad.addItems(["Menor", "Operativa", "Crítica"])
+        self._gravedad.addItems(["Incidente Menor", "Falla Operativa", "Falla Critica"])
         layout.addWidget(self._gravedad)
 
         layout.addWidget(lbl("Descripción del incidente:"))

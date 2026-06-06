@@ -1,4 +1,5 @@
-
+# Ignorar todos los archivos compilados de Python
 *.pyc
 
-app/ui/modules/__pycache__/
+# Ignorar las carpetas de caché de Python
+**/__pycache__/

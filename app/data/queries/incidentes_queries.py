@@ -19,6 +19,8 @@ def _incidente_a_dict(inc: Incidente) -> dict:
         "incidente_id": inc.id,
         "asignacion_id": asignacion.folio() if asignacion else "—",
         "asignacion_db_id": inc.asignacion_id,
+        "vehiculo_patente": asignacion.vehiculo.patente if asignacion and asignacion.vehiculo else "—",
+        "conductor": asignacion.conductor.usuario.nombre if asignacion and asignacion.conductor and asignacion.conductor.usuario else "—",
         "tipo": inc.clasificacion_gravedad.replace("_", " "),
         "tipo_raw": inc.clasificacion_gravedad,
         "gravedad": inc.clasificacion_gravedad.replace("_", " "),

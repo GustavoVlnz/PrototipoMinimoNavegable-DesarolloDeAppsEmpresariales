@@ -115,9 +115,23 @@ class ConductoresView(QWidget):
     def _agregar(self):
         dlg = AgregarConductorDialog(self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
-            QMessageBox.information(self, "Conductor agregado",
-                                    "Nuevo conductor registrado (funcionalidad pendiente BD).")
-            # TODO: Implementar creación en BD cuando esté disponible
+            data = dlg.get_data()
+            conductor_id = conductores_queries.crear_conductor(
+                nombre=data["nombre"],
+                rut=data["rut"],
+                tipo_licencia=data["licencia"],
+                sucursal_nombre=data["sucursal"]
+            )
+            
+            if conductor_id:
+                QMessageBox.information(self, "Conductor agregado",
+                                        f"Nuevo conductor {data['nombre']} registrado exitosamente.")
+                # Recargar lista de conductores
+                self._cargar_conductores()
+                self._fill_table()
+            else:
+                QMessageBox.warning(self, "Error",
+                                   f"No se pudo registrar el conductor. Intente nuevamente.")
 
 
 # ─────────────────────────────────────────────────────────────────

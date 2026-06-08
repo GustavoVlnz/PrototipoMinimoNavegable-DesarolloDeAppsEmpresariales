@@ -14,6 +14,7 @@ class DocumentacionView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._documentos = []
+        self._table = None  # Referencia a la tabla para actualizaciones
         self._cargar_documentos()
         self._build_ui()
 
@@ -82,23 +83,23 @@ class DocumentacionView(QWidget):
         p_layout.addWidget(_header("Registro Documental Completo"))
 
         cols = ["Entidad", "Documento", "Vencimiento", "Días Restantes", "Estado"]
-        table = make_table(cols)
-        table.setRowCount(len(self._documentos))
+        self._table = make_table(cols)
+        self._table.setRowCount(len(self._documentos))
 
         for r, d in enumerate(self._documentos):
             dias = d["dias_restantes"]
             dias_str = f"+{dias} días" if dias >= 0 else f"{dias} días"
-            set_table_item(table, r, 0, d["vehiculo"])
-            set_table_item(table, r, 1, d["doc_tipo"])
-            set_table_item(table, r, 2, d["vencimiento"])
-            set_table_item(table, r, 3, dias_str)
-            set_table_item(table, r, 4, d["estado"], badge=True)
+            set_table_item(self._table, r, 0, d["vehiculo"])
+            set_table_item(self._table, r, 1, d["doc_tipo"])
+            set_table_item(self._table, r, 2, d["vencimiento"])
+            set_table_item(self._table, r, 3, dias_str)
+            set_table_item(self._table, r, 4, d["estado"], badge=True)
 
         # Ajustar columnas de texto; la de badge ya fue ajustada por set_table_item
         for col in range(len(cols) - 1):
-            table.resizeColumnToContents(col)
+            self._table.resizeColumnToContents(col)
 
-        p_layout.addWidget(table)
+        p_layout.addWidget(self._table)
         c_layout.addWidget(panel)
         layout.addWidget(content)
 
@@ -109,6 +110,21 @@ class DocumentacionView(QWidget):
                 item.widget().deleteLater()
             elif item.layout():
                 self._clear_layout(item.layout())
+
+    def _actualizar_tabla(self):
+        """Actualiza solo el contenido de la tabla sin reconstruir la UI."""
+        if self._table is None:
+            return
+        
+        self._table.setRowCount(len(self._documentos))
+        for r, d in enumerate(self._documentos):
+            dias = d["dias_restantes"]
+            dias_str = f"+{dias} días" if dias >= 0 else f"{dias} días"
+            set_table_item(self._table, r, 0, d["vehiculo"])
+            set_table_item(self._table, r, 1, d["doc_tipo"])
+            set_table_item(self._table, r, 2, d["vencimiento"])
+            set_table_item(self._table, r, 3, dias_str)
+            set_table_item(self._table, r, 4, d["estado"], badge=True)
 
     def _refresh_ui(self):
         old_layout = self.layout()
@@ -129,7 +145,9 @@ class DocumentacionView(QWidget):
             ok = documentacion_queries.actualizar_fecha_vencimiento(documento_id, nueva_fecha_str)
             
             if ok:
-                self._refresh_ui()
+                # Recargar datos y actualizar tabla sin borrar la vista
+                self._cargar_documentos()
+                self._actualizar_tabla()
                 QMessageBox.information(
                     self, "Renovación registrada",
                     f"Documento {doc['doc_tipo']} de {doc['vehiculo']} actualizado al {nueva_fecha_str}."

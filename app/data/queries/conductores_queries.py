@@ -6,7 +6,7 @@ Todas las consultas a la base de datos relacionadas con conductores.
 from datetime import datetime
 
 from app.data.database import get_session
-from app.data.models import Conductor, Usuario
+from app.data.models import Conductor, Usuario, Sucursal
 
 
 # ─── Helper ORM → dict ────────────────────────────────────────────────────────
@@ -144,3 +144,52 @@ def actualizar_licencia(conductor_id: int, nueva_fecha_vencimiento: str) -> bool
     except Exception as e:
         print(f"Error al actualizar licencia: {e}")
         return False
+
+
+def crear_conductor(nombre: str, rut: str, tipo_licencia: str, sucursal_nombre: str) -> int | None:
+    """
+    Crea un nuevo conductor con su usuario asociado.
+    
+    Args:
+        nombre: Nombre del conductor
+        rut: RUT del conductor
+        tipo_licencia: Tipo de licencia (ej: "Clase B", "Clase D")
+        sucursal_nombre: Nombre de la sucursal
+    
+    Returns:
+        ID del nuevo conductor si fue exitoso, None en caso contrario.
+    """
+    try:
+        with get_session() as session:
+            # Buscar la sucursal por nombre
+            sucursal = session.query(Sucursal).filter(Sucursal.nombre == sucursal_nombre).first()
+            if not sucursal:
+                print(f"Sucursal '{sucursal_nombre}' no encontrada")
+                return None
+            
+            # Crear usuario
+            nuevo_usuario = Usuario(
+                nombre=nombre,
+                rut=rut,
+                rol="Tecnico_Mantencion",  # Rol por defecto para conductores
+                activo=True,
+                sucursal_id=sucursal.id
+            )
+            session.add(nuevo_usuario)
+            session.flush()  # Obtener el ID del usuario antes de crear el conductor
+            
+            # Crear conductor
+            nuevo_conductor = Conductor(
+                usuario_id=nuevo_usuario.id,
+                tipo_licencia=tipo_licencia,
+                habilitado=True,
+                estado_disponibilidad="Disponible"
+            )
+            session.add(nuevo_conductor)
+            session.flush()
+            
+            conductor_id = nuevo_conductor.id
+        return conductor_id
+    except Exception as e:
+        print(f"Error al crear conductor: {e}")
+        return None

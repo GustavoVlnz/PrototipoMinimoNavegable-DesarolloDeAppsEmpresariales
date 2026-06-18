@@ -98,7 +98,6 @@ class AsignacionesView(QWidget):
         self._table.resizeColumnsToContents()
 
     def _ver_detalle(self, asignacion_id: int):
-        # ✓ FIX: se busca por id_numerico, seguro ante reordenamientos futuros
         asig = next((a for a in self._asignaciones if a["id_numerico"] == asignacion_id), None)
         if not asig:
             return
@@ -211,7 +210,6 @@ class DetalleAsignacionDialog(QDialog):
             r_box.addWidget(make_action_button("Cerrar Asignación", "btn_primary", self._cerrar, ""))
             layout.addLayout(r_box)
         else:
-            # ✓ FIX: se agrega botón de cierre para estados sin acciones (Cerrada, Fallida, etc.)
             lbl = QLabel("No hay acciones disponibles para esta asignación.")
             lbl.setObjectName("page_subtitle")
             layout.addWidget(lbl)

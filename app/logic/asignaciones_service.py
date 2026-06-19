@@ -1,19 +1,29 @@
+#app/logic/asignaciones_service.py
+"""
+Este archivo quedo reducido a registrar_asignacion(), que es la unica
+operacion de Asignacion que necesita una capa de service propia: busca
+y valida tres entidades distintas (solicitud, vehiculo, conductor) con
+reglas que van mas alla de "es valida esta transicion de estado"
+(existencia, disponibilidad, pertenencia).
+
+"""
+
 from app.data.queries import asignaciones_queries
-from app.data.models import Asignacion, Solicitud, Vehiculo, Conductor
+from app.data.models import Solicitud, Vehiculo, Conductor
+from app.logic import transition_service
+from app.logic.transition_service import TransitionError
+
 
 class AsignacionServiceError(Exception):
     pass
 
-def puede_hacer_checkout(estado: str) -> bool:
-    return estado == "Confirmada"
-
-def puede_registrar_entrega(estado: str) -> bool:
-    return estado == "En ejecución"
-
-def puede_cerrar(estado: str) -> bool:
-    return estado in ("Completada", "Completada con incidencia")
 
 def registrar_asignacion(session, solicitud_id, vehiculo_id, conductor_id, asignado_por):
+    """
+    Crea una nueva Asignacion a partir de una Solicitud Aprobada, un
+    Vehiculo Disponible y un Conductor Disponible.
+
+    """
     solicitud = session.query(Solicitud).filter(Solicitud.id == solicitud_id).first()
     if not solicitud or solicitud.estado_solicitud != "Aprobada":
         raise AsignacionServiceError("La solicitud no existe o no está aprobada.")
@@ -26,101 +36,11 @@ def registrar_asignacion(session, solicitud_id, vehiculo_id, conductor_id, asign
     if not conductor or conductor.estado_disponibilidad != "Disponible":
         raise AsignacionServiceError("El conductor no está disponible.")
 
-    vehiculo.estado_operacional = "Reservado"
-    conductor.estado_disponibilidad = "Asignado"
+    nueva_asig = asignaciones_queries.crear(session, solicitud_id, vehiculo_id, conductor_id, asignado_por)
 
-    return asignaciones_queries.crear(session, solicitud_id, vehiculo_id, conductor_id, asignado_por)
+    try:
+        transition_service.confirmar_asignacion(session, nueva_asig)
+    except TransitionError as e:
+        raise AsignacionServiceError(str(e))
 
-def procesar_checkout(session, asignacion_id: int):
-    asig = (
-        session.query(Asignacion)
-        .filter(Asignacion.id == asignacion_id)
-        .first()
-    )
-
-    if not asig:
-        raise AsignacionServiceError(
-            "La asignación no existe."
-        )
-
-    if asig.estado_asignacion != "Confirmada":
-        raise AsignacionServiceError(
-            "Estado inválido para Check-out."
-        )
-
-    asig.estado_asignacion = "En_Ejecucion"
-    asig.vehiculo.estado_operacional = "En_Ruta"
-
-    session.commit()
-
-def procesar_entrega(
-    session,
-    asignacion_id: int,
-    fue_conforme: bool
-):
-    asig = (
-        session.query(Asignacion)
-        .filter(Asignacion.id == asignacion_id)
-        .first()
-    )
-
-    if not asig:
-        raise AsignacionServiceError(
-            "La asignación no existe."
-        )
-
-    if asig.estado_asignacion != "En_Ejecucion":
-        raise AsignacionServiceError(
-            "La asignación no está en ruta."
-        )
-
-    asig.vehiculo.estado_operacional = "Disponible"
-    asig.conductor.estado_disponibilidad = "Disponible"
-
-    asig.estado_asignacion = (
-        "Completada"
-        if fue_conforme
-        else "Completada_Con_Incidencia"
-    )
-
-    session.commit()
-
-def procesar_cancelacion(session, asignacion_id: int):
-    asig = (
-        session.query(Asignacion)
-        .filter(Asignacion.id == asignacion_id)
-        .first()
-    )
-
-    if not asig:
-        raise AsignacionServiceError(
-            "La asignación no existe."
-        )
-
-    if asig.estado_asignacion not in (
-        "Confirmada",
-        "Pendiente",
-    ):
-        raise AsignacionServiceError(
-            "No se puede cancelar en este estado."
-        )
-
-    asig.vehiculo.estado_operacional = "Disponible"
-    asig.conductor.estado_disponibilidad = "Disponible"
-    asig.solicitud.estado_solicitud = "Aprobada"
-    asig.estado_asignacion = "Fallida"
-
-    session.commit()
-
-def procesar_cierre(session, asignacion_id: int):
-    asig = session.query(Asignacion).filter(Asignacion.id == asignacion_id).first()
-
-    if not asig:
-        raise AsignacionServiceError("La asignación no existe.")
-
-    if asig.estado_asignacion not in ("Completada", "Completada_Con_Incidencia"):
-        raise AsignacionServiceError("La asignación debe estar completada.")
-
-    asig.estado_asignacion = "Cerrada"
-    asig.solicitud.estado_solicitud = "Cancelada"
-    session.commit()
+    return nueva_asig

@@ -11,7 +11,7 @@ from typing import Optional
 # ─────────────────────────────────────────────────────────────────────────────
 
 DIAS_ALERTA_LICENCIA = 30   # Días previos al vencimiento para marcar alerta
-ESTADOS_VALIDOS = {"Disponible", "Asignado", "En descanso", "No habilitado", "En espera"}
+ESTADOS_VALIDOS = {"Disponible", "Asignado", "En descanso", "No habilitado"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ class ResultadoOperacion:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# VALIDACIONES
+# VALIDACIONES (solo lectura, no mutan nada)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_fecha(fecha_str: str) -> Optional[date]:
@@ -81,48 +81,29 @@ def alerta_licencia(conductor: dict) -> Optional[str]:
     return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# OPERACIONES DE HABILITACIÓN
-# ─────────────────────────────────────────────────────────────────────────────
-
-def habilitar_conductor(conductor: dict) -> ResultadoOperacion:
+def puede_habilitarse(conductor: dict) -> ResultadoOperacion:
     """
-    Habilita a un conductor previamente deshabilitado.
-
-    Reglas:
-        - No se puede habilitar si ya está habilitado.
-        - No se puede habilitar si la licencia está vencida.
-        - Al habilitar pasa a estado 'Disponible'.
+    Verifica si un conductor puede pasar a habilitado, SIN mutar nada.
+    La mutacion real la hace transition_service.habilitar_conductor().
     """
     if conductor.get("habilitado"):
         return ResultadoOperacion(False, f"{conductor['nombre']} ya está habilitado.")
-
     if licencia_vencida(conductor):
         return ResultadoOperacion(
             False,
             f"No se puede habilitar a {conductor['nombre']}: licencia vencida el "
             f"{conductor.get('licencia_vence', '—')}. Actualice la licencia primero."
         )
-
-    conductor["habilitado"] = True
-    conductor["estado"] = "Disponible"
-    return ResultadoOperacion(
-        True,
-        f"{conductor['nombre']} habilitado correctamente y marcado como Disponible."
-    )
+    return ResultadoOperacion(True, f"{conductor['nombre']} puede habilitarse.")
 
 
-def deshabilitar_conductor(conductor: dict) -> ResultadoOperacion:
+def puede_deshabilitarse(conductor: dict) -> ResultadoOperacion:
     """
-    Deshabilita a un conductor.
-
-    Reglas:
-        - No se puede deshabilitar si está en una asignación activa (estado 'Asignado').
-        - Al deshabilitar pasa a estado 'No habilitado'.
+    Verifica si un conductor puede deshabilitarse, SIN mutar nada.
+    La mutacion real la hace transition_service.deshabilitar_conductor().
     """
     if not conductor.get("habilitado"):
         return ResultadoOperacion(False, f"{conductor['nombre']} ya está deshabilitado.")
-
     if conductor.get("estado") == "Asignado":
         asig = conductor.get("asignacion_activa", "desconocida")
         return ResultadoOperacion(
@@ -130,121 +111,32 @@ def deshabilitar_conductor(conductor: dict) -> ResultadoOperacion:
             f"No se puede deshabilitar a {conductor['nombre']}: "
             f"tiene una asignación activa ({asig}). Libere la asignación primero."
         )
-
-    conductor["habilitado"] = False
-    conductor["estado"] = "No habilitado"
-    return ResultadoOperacion(
-        True,
-        f"{conductor['nombre']} deshabilitado correctamente."
-    )
+    return ResultadoOperacion(True, f"{conductor['nombre']} puede deshabilitarse.")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# OPERACIONES DE ESTADO
-# ─────────────────────────────────────────────────────────────────────────────
-
-def poner_en_descanso(conductor: dict) -> ResultadoOperacion:
+def puede_asignarse(conductor: dict) -> ResultadoOperacion:
     """
-    Marca al conductor como 'En descanso'.
-
-    Reglas:
-        - Sólo válido si está Disponible y habilitado.
-    """
-    if not conductor.get("habilitado"):
-        return ResultadoOperacion(False, "El conductor no está habilitado.")
-    if conductor.get("estado") != "Disponible":
-        return ResultadoOperacion(
-            False,
-            f"Sólo se puede poner en descanso desde estado 'Disponible'. "
-            f"Estado actual: {conductor.get('estado')}."
-        )
-
-    conductor["estado"] = "En descanso"
-    return ResultadoOperacion(True, f"{conductor['nombre']} marcado en descanso.")
-
-
-def marcar_disponible(conductor: dict) -> ResultadoOperacion:
-    """
-    Marca al conductor como 'Disponible'.
-
-    Reglas:
-        - El conductor debe estar habilitado.
-        - Sólo válido desde 'En descanso' o 'En espera'.
-    """
-    if not conductor.get("habilitado"):
-        return ResultadoOperacion(False, "El conductor no está habilitado.")
-
-    estados_origen = {"En descanso", "En espera"}
-    if conductor.get("estado") not in estados_origen:
-        return ResultadoOperacion(
-            False,
-            f"No se puede marcar como Disponible desde estado '{conductor.get('estado')}'."
-        )
-
-    conductor["estado"] = "Disponible"
-    return ResultadoOperacion(True, f"{conductor['nombre']} marcado como Disponible.")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# OPERACIONES DE ASIGNACIÓN
-# ─────────────────────────────────────────────────────────────────────────────
-
-def asignar_conductor(conductor: dict, asignacion_id: str) -> ResultadoOperacion:
-    """
-    Vincula un conductor a una asignación.
-
-    Reglas:
-        - El conductor debe estar habilitado.
-        - El conductor debe estar en estado 'Disponible'.
-        - La licencia no debe estar vencida.
+    Verifica si un conductor puede ser asignado, SIN mutar nada.
+    La mutacion real (vincularlo a una asignacion) ocurre en
+    asignaciones_service.registrar_asignacion(), via transition_service.
     """
     if not conductor.get("habilitado"):
         return ResultadoOperacion(
             False,
             f"{conductor['nombre']} no está habilitado y no puede ser asignado."
         )
-
     if conductor.get("estado") != "Disponible":
         return ResultadoOperacion(
             False,
             f"{conductor['nombre']} no está disponible "
             f"(estado actual: {conductor.get('estado')})."
         )
-
     if licencia_vencida(conductor):
         return ResultadoOperacion(
             False,
             f"La licencia de {conductor['nombre']} está vencida. No se puede asignar."
         )
-
-    conductor["estado"] = "Asignado"
-    conductor["asignacion_activa"] = asignacion_id
-    return ResultadoOperacion(
-        True,
-        f"{conductor['nombre']} asignado a {asignacion_id}."
-    )
-
-
-def liberar_conductor(conductor: dict) -> ResultadoOperacion:
-    """
-    Libera a un conductor de su asignación activa y lo marca como Disponible.
-
-    Reglas:
-        - El conductor debe tener una asignación activa.
-    """
-    if conductor.get("estado") != "Asignado":
-        return ResultadoOperacion(
-            False,
-            f"{conductor['nombre']} no tiene una asignación activa."
-        )
-
-    asig_anterior = conductor.get("asignacion_activa", "—")
-    conductor["estado"] = "Disponible"
-    conductor["asignacion_activa"] = None
-    return ResultadoOperacion(
-        True,
-        f"{conductor['nombre']} liberado de la asignación {asig_anterior}."
-    )
+    return ResultadoOperacion(True, f"{conductor['nombre']} puede asignarse.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

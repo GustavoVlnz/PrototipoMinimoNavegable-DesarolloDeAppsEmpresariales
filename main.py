@@ -6,7 +6,6 @@ from app.data.database import init_db
 from app.data.seed import run_seed  
 
 def main():
-    init_db()
     run_seed() 
     app = QApplication(sys.argv)
     app.setApplicationName("LoncoExpress - Gestión de Flota")

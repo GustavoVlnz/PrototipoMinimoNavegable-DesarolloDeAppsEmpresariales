@@ -10,8 +10,8 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 # Apunta a app/data/ donde están los demás archivos de datos
-_DB_PATH = Path(__file__).resolve().parent / "loncoexpress.db"
-_DB_URL  = f"sqlite:///{_DB_PATH}"
+DB_PATH = Path(__file__).resolve().parent / "loncoexpress.db"
+_DB_URL = f"sqlite:///{DB_PATH}"
 
 # ── Engine ────────────────────────────────────────────────────────────────────
 # check_same_thread=False es necesario en PyQt6 porque la UI puede consultar

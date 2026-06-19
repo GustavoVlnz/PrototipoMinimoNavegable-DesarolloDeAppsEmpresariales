@@ -187,6 +187,7 @@ class Solicitud(Base):
         Enum(
             "Creada", "En_Evaluacion", "Aprobada", "Rechazada",
             "Pendiente_Reasignacion", "Cancelada", "Reprogramada",
+            "Completada",
             name="estado_solicitud",
         ),
         nullable=False,

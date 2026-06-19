@@ -5,6 +5,8 @@ app/logic/vehiculos_logic.py
 
 from __future__ import annotations
 
+from datetime import date, datetime
+
 TIPOS_VEHICULO = ["Camioneta", "Furgon", "Camion Liviano"]
 
 ESTADOS_VEHICULO = [
@@ -16,8 +18,6 @@ ESTADOS_VEHICULO = [
     "Bloqueado",
 ]
 
-ESTADOS_BLOQUEABLES = ["Disponible"]
-ESTADOS_DESBLOQUEABLES = ["Bloqueado"]
 ESTADOS_NO_ASIGNABLES = ["Bloqueado", "En Mantencion", "Fuera de Servicio", "En Ruta"]
 
 
@@ -81,35 +81,8 @@ def validar_nuevo_vehiculo(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# OPERACIONES DE ESTADO
+# CONSULTAS DE ELEGIBILIDAD 
 # ─────────────────────────────────────────────────────────────────────────────
-
-def toggle_bloqueo(vehiculo: dict) -> ResultadoOperacion:
-
-    estado = vehiculo.get("estado", "").replace("_", " ")
-    patente = vehiculo.get("patente", "")
-
-    if estado == "Disponible":
-        return ResultadoOperacion(True, f"Vehículo {patente} bloqueado administrativamente.")
-    elif estado == "Bloqueado":
-        return ResultadoOperacion(True, f"Vehículo {patente} desbloqueado. Vuelve a 'Disponible'.")
-    else:
-        return ResultadoOperacion(
-            False,
-            f"No se puede cambiar el bloqueo desde estado '{estado}'. "
-            f"Solo es posible desde 'Disponible' o 'Bloqueado'."
-        )
-
-
-def nuevo_estado_tras_toggle(estado_actual: str) -> str | None:
-
-    estado = estado_actual.replace("_", " ")
-    if estado == "Disponible":
-        return "Bloqueado"
-    elif estado == "Bloqueado":
-        return "Disponible"
-    return None
-
 
 def puede_asignarse(vehiculo: dict) -> bool:
     """Retorna True si el vehículo está en condiciones de ser asignado."""
@@ -137,14 +110,29 @@ def resumen_flota(vehiculos: list[dict]) -> dict:
     }
 
 
-def vehiculos_con_documentacion_vencida(vehiculos: list[dict]) -> list[dict]:
+def _parse_fecha(fecha_str: str) -> date | None:
+    """Intenta parsear una fecha en formato ISO (YYYY-MM-DD)."""
+    if not fecha_str or fecha_str == "—":
+        return None
+    try:
+        return datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    except ValueError:
+        return None
 
+
+def vehiculos_con_documentacion_vencida(vehiculos: list[dict]) -> list[dict]:
+    """
+    Retorna los vehiculos que tienen al menos un documento
+    (seguro_vence, permiso_vence, revision_tecnica) con fecha pasada.
+
+    """
+    hoy = date.today()
     alertas = []
     for v in vehiculos:
         campos = ["seguro_vence", "permiso_vence", "revision_tecnica"]
         for campo in campos:
-            valor = v.get(campo, "—")
-            if valor and valor != "—":
+            fecha = _parse_fecha(v.get(campo, ""))
+            if fecha is not None and fecha < hoy:
                 alertas.append(v)
                 break
     return alertas

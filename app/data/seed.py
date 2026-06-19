@@ -6,20 +6,15 @@ Puebla loncoexpress.db con datos de prueba listos para demostrar la aplicación.
 Uso (desde la raíz del proyecto):
     python -m app.data.seed
 """
-
+import os
 from datetime import datetime
 
-from app.data.database import init_db, get_session
+from app.data.database import DB_PATH, init_db, get_session
 from app.data.models import (
     Sucursal, Usuario, Vehiculo, Conductor,
     DocumentacionVehiculo, Solicitud, Asignacion,
     Incidente, Mantenimiento,
 )
-
-
-def _ya_tiene_datos(db) -> bool:
-    """Retorna True si la base ya fue poblada (evita duplicados)."""
-    return db.query(Sucursal).count() > 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -354,14 +349,15 @@ def _seed_mantenimientos(db, vehiculos: dict, incidentes: list, usuarios: dict):
 # ENTRY POINT
 # ═══════════════════════════════════════════════════════════════════════════════
 def run_seed():
-    print("  Inicializando base de datos LoncoExpress")
+    print("Inicializando base de datos LoncoExpress")
+
+    if os.path.exists(DB_PATH):
+        os.remove(DB_PATH)
+        print("Base de datos anterior eliminada.")
+
     init_db()
 
     with get_session() as db:
-        if _ya_tiene_datos(db):
-            print("  La base de datos ya tiene datos. Seed omitido.")
-            print("    (Elimina loncoexpress.db y vuelve a ejecutar para resetear)")
-            return
 
         print("   Creando sucursales")
         sucursales = _seed_sucursales(db)

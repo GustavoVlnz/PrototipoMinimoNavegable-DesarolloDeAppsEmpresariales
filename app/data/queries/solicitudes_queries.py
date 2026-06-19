@@ -16,11 +16,12 @@ from app.data.models import Solicitud, Sucursal, Usuario
 _ESTADO_DISPLAY = {
     "Creada":                 "Creada",
     "En_Evaluacion":          "En evaluación",
-    "Aprobada":               "Confirmada",
+    "Aprobada":               "Aprobada",
     "Rechazada":              "Rechazada",
-    "Pendiente_Reasignacion": "Pendiente",
+    "Pendiente_Reasignacion": "Pendiente de reasignación",
     "Cancelada":              "Cancelada",
     "Reprogramada":           "Reprogramada",
+    "Completada":             "Completada",
 }
 
 _ESTADO_RAW = {v: k for k, v in _ESTADO_DISPLAY.items()}
@@ -113,6 +114,7 @@ def contar_hoy(session) -> int:
 
 
 # ─── Mutaciones ───────────────────────────────────────────────────────────────
+
 
 def crear(
     session,

@@ -1,4 +1,4 @@
-#app/logic/asignaciones_queries.py
+#app/data/queries/asignaciones_queries.py
 
 from datetime import datetime
 from sqlalchemy.orm import joinedload
@@ -98,11 +98,15 @@ def obtener_por_id(session, asignacion_id: int) -> dict:
     return _asignacion_a_dict(asig) if asig else None
 
 def crear(session, solicitud_id: int, vehiculo_id: int, conductor_id: int, asignado_por: int) -> Asignacion:
+    """
+    Crea la fila de Asignacion en estado 'Solicitada'.
+
+    """
     nueva_asig = Asignacion(
         solicitud_id=solicitud_id,
         vehiculo_id=vehiculo_id,
         conductor_id=conductor_id,
-        estado_asignacion="Confirmada",
+        estado_asignacion="Solicitada",
         fecha_asignacion=datetime.utcnow(),
         asignado_por=asignado_por
     )
@@ -127,20 +131,3 @@ def obtener_conductores_disponibles(session):
         .filter(Conductor.estado_disponibilidad == "Disponible")
         .all()
     )
-
-def actualizar_estado(session, asignacion_id: int, nuevo_estado: str) -> bool:
-    if nuevo_estado not in _ESTADO_DISPLAY:       
-        return False
-
-    asig = (
-        session.query(Asignacion)
-        .filter(Asignacion.id == asignacion_id)
-        .first()
-    )
-
-    if not asig:
-        return False
-
-    asig.estado_asignacion = nuevo_estado
-    session.commit()
-    return True

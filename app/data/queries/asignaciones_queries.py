@@ -97,6 +97,24 @@ def obtener_por_id(session, asignacion_id: int) -> dict:
     )
     return _asignacion_a_dict(asig) if asig else None
 
+def obtener_orm_por_id(session, asignacion_id: int) -> Asignacion | None:
+    """
+    Igual que obtener_por_id(), pero retorna el objeto ORM en vez de un
+    dict.
+    """
+    return (
+        session.query(Asignacion)
+        .options(
+            joinedload(Asignacion.solicitud).joinedload(Solicitud.sucursal_origen),
+            joinedload(Asignacion.solicitud).joinedload(Solicitud.sucursal_destino),
+            joinedload(Asignacion.vehiculo),
+            joinedload(Asignacion.conductor).joinedload(Conductor.usuario),
+            joinedload(Asignacion.trazabilidad),
+        )
+        .filter(Asignacion.id == asignacion_id)
+        .first()
+    )
+
 def crear(session, solicitud_id: int, vehiculo_id: int, conductor_id: int, asignado_por: int) -> Asignacion:
     """
     Crea la fila de Asignacion en estado 'Solicitada'.

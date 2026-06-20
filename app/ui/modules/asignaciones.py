@@ -1,3 +1,5 @@
+#app/ui/modules/asignaciones.py
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -9,6 +11,7 @@ from app.ui.components.widgets import (
 )
 from app.data.queries import asignaciones_queries
 from app.logic import asignaciones_service
+from app.logic import transition_service
 
 
 class AsignacionesView(QWidget):
@@ -65,6 +68,7 @@ class AsignacionesView(QWidget):
         self._fill_table()
 
     def _actualizar_kpis(self):
+
         while self.kpi_layout.count():
             item = self.kpi_layout.takeAt(0)
             if item.widget():
@@ -91,17 +95,14 @@ class AsignacionesView(QWidget):
             btn = QPushButton("Gestionar")
             btn.setObjectName("btn_table_action")
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            # ✓ FIX: se pasa id_numerico en lugar del índice de fila
             btn.clicked.connect(lambda _, aid=a["id_numerico"]: self._ver_detalle(aid))
             self._table.setCellWidget(r, 9, btn)
 
         self._table.resizeColumnsToContents()
 
     def _ver_detalle(self, asignacion_id: int):
-        asig = next((a for a in self._asignaciones if a["id_numerico"] == asignacion_id), None)
-        if not asig:
-            return
-        dlg = DetalleAsignacionDialog(asig, self.db_session, self)
+
+        dlg = DetalleAsignacionDialog(asignacion_id, self.db_session, self)
         if dlg.exec():
             self.cargar_datos()
 
@@ -140,22 +141,38 @@ class AsignacionesView(QWidget):
 
 class DetalleAsignacionDialog(QDialog):
 
-    def __init__(self, asig, db_session, parent=None):
+    def __init__(self, asignacion_id: int, db_session, parent=None):
         super().__init__(parent)
-        self._asig = asig
         self.db_session = db_session
-        self.setWindowTitle(f"Asignación {asig['id']}")
+        self._asignacion_id = asignacion_id
+        self._asig = asignaciones_queries.obtener_orm_por_id(db_session, asignacion_id)
+
+        if not self._asig:
+            self.setWindowTitle("Asignación no encontrada")
+            layout = QVBoxLayout(self)
+            layout.addWidget(QLabel("No se encontró la asignación solicitada."))
+            btn = QPushButton("Cerrar")
+            btn.clicked.connect(self.reject)
+            layout.addWidget(btn)
+            return
+
+        self.setWindowTitle(f"Asignación {self._asig.folio()}")
         self.setMinimumWidth(520)
         self._build_ui()
 
     def _build_ui(self):
+        asig = self._asig
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 28, 28, 24)
+        estado_display = asignaciones_queries._ESTADO_DISPLAY.get(
+            asig.estado_asignacion, asig.estado_asignacion
+        )
 
         row = QHBoxLayout()
-        title = QLabel(f"Asignación {self._asig['id']}")
+        title = QLabel(f"Asignación {asig.folio()}")
         title.setObjectName("dialog_title")
-        badge = make_badge(self._asig["estado"])
+        badge = make_badge(estado_display)
         row.addWidget(title)
         row.addStretch()
         row.addWidget(badge)
@@ -165,14 +182,25 @@ class DetalleAsignacionDialog(QDialog):
         frame = QFrame()
         frame.setObjectName("panel")
         grid = QGridLayout(frame)
+
+        origen = asig.solicitud.sucursal_origen.nombre if asig.solicitud and asig.solicitud.sucursal_origen else "—"
+        destino = asig.solicitud.sucursal_destino.nombre if asig.solicitud and asig.solicitud.sucursal_destino else "—"
+        nombre_conductor = "—"
+        if asig.conductor and asig.conductor.usuario:
+            nombre_conductor = asig.conductor.usuario.nombre
+
         fields = [
-            ("Solicitud", self._asig["solicitud_id"]),
-            ("Vehículo", self._asig["vehiculo_patente"]),
-            ("Conductor", self._asig["conductor"]),
-            ("Ruta", f"{self._asig['origen']} → {self._asig['destino']}"),
-            ("Prioridad", self._asig["prioridad"]),
-            ("Inicio", self._asig["inicio"] or "Pendiente"),
-            ("Fin", self._asig["fin"] or "Pendiente"),
+            ("Solicitud", asig.solicitud.folio() if asig.solicitud else "—"),
+            ("Vehículo", asig.vehiculo.patente if asig.vehiculo else "—"),
+            ("Conductor", nombre_conductor),
+            ("Ruta", f"{origen} → {destino}"),
+            ("Prioridad", asig.solicitud.prioridad if asig.solicitud else "—"),
+            ("Inicio", asig.fecha_asignacion.strftime("%Y-%m-%d %H:%M") if asig.fecha_asignacion else "Pendiente"),
+            ("Fin", (
+                asig.trazabilidad.fecha_hora_arribo_real.strftime("%Y-%m-%d %H:%M")
+                if asig.trazabilidad and asig.trazabilidad.fecha_hora_arribo_real
+                else "Pendiente"
+            )),
         ]
         for i, (label, value) in enumerate(fields):
             lbl = QLabel(label + ":")
@@ -185,8 +213,10 @@ class DetalleAsignacionDialog(QDialog):
         layout.addWidget(frame)
         layout.addSpacing(18)
 
-        estado = self._asig["estado"]
-        if estado == "Confirmada":
+        acciones_mostradas = False
+
+        if transition_service.puede_transicionar(asig, "En_Ejecucion"):
+            acciones_mostradas = True
             layout.addWidget(make_info_frame("El conductor debe revisar el vehículo antes de salir."))
             layout.addSpacing(10)
             r_box = QHBoxLayout()
@@ -194,7 +224,12 @@ class DetalleAsignacionDialog(QDialog):
             r_box.addStretch()
             r_box.addWidget(make_action_button("Cancelar", "btn_danger", self._cancelar, "✕"))
             layout.addLayout(r_box)
-        elif estado == "En ejecución":
+
+        elif (
+            transition_service.puede_transicionar(asig, "Completada")
+            or transition_service.puede_transicionar(asig, "Completada_Con_Incidencia")
+        ):
+            acciones_mostradas = True
             layout.addWidget(make_info_frame("La asignación se encuentra actualmente en ruta."))
             layout.addSpacing(10)
             r_box = QHBoxLayout()
@@ -202,14 +237,17 @@ class DetalleAsignacionDialog(QDialog):
             r_box.addStretch()
             r_box.addWidget(make_action_button("Reportar Incidente", "btn_warning", self._incidente, ""))
             layout.addLayout(r_box)
-        elif estado in ("Completada", "Completada con incidencia"):
+
+        elif transition_service.puede_transicionar(asig, "Cerrada"):
+            acciones_mostradas = True
             layout.addWidget(make_info_frame("La entrega fue registrada correctamente."))
             layout.addSpacing(10)
             r_box = QHBoxLayout()
             r_box.addStretch()
             r_box.addWidget(make_action_button("Cerrar Asignación", "btn_primary", self._cerrar, ""))
             layout.addLayout(r_box)
-        else:
+
+        if not acciones_mostradas:
             lbl = QLabel("No hay acciones disponibles para esta asignación.")
             lbl.setObjectName("page_subtitle")
             layout.addWidget(lbl)
@@ -218,11 +256,13 @@ class DetalleAsignacionDialog(QDialog):
             r_box.addWidget(make_action_button("Cerrar", "btn_secondary", self.reject, ""))
             layout.addLayout(r_box)
 
+    # ─── Acciones ──────────────
+
     def _checkout(self):
         try:
-            asignaciones_service.procesar_checkout(self.db_session, self._asig["id_numerico"])
+            transition_service.iniciar_ruta(self.db_session, self._asig)
             self.accept()
-        except asignaciones_service.AsignacionServiceError as e:
+        except transition_service.TransitionError as e:
             QMessageBox.critical(self, "Error", str(e))
 
     def _entrega(self):
@@ -232,23 +272,23 @@ class DetalleAsignacionDialog(QDialog):
         )
         conforme = (resp == QMessageBox.StandardButton.Yes)
         try:
-            asignaciones_service.procesar_entrega(self.db_session, self._asig["id_numerico"], conforme)
+            transition_service.registrar_entrega(self.db_session, self._asig, conforme)
             self.accept()
-        except asignaciones_service.AsignacionServiceError as e:
+        except transition_service.TransitionError as e:
             QMessageBox.critical(self, "Error", str(e))
 
     def _cerrar(self):
         try:
-            asignaciones_service.procesar_cierre(self.db_session, self._asig["id_numerico"])
+            transition_service.cerrar_asignacion(self.db_session, self._asig)
             self.accept()
-        except asignaciones_service.AsignacionServiceError as e:
+        except transition_service.TransitionError as e:
             QMessageBox.critical(self, "Error", str(e))
 
     def _cancelar(self):
         try:
-            asignaciones_service.procesar_cancelacion(self.db_session, self._asig["id_numerico"])
+            transition_service.cancelar_asignacion(self.db_session, self._asig)
             self.accept()
-        except asignaciones_service.AsignacionServiceError as e:
+        except transition_service.TransitionError as e:
             QMessageBox.critical(self, "Error", str(e))
 
     def _incidente(self):

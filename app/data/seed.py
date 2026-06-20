@@ -344,6 +344,9 @@ def _seed_mantenimientos(db, vehiculos: dict, incidentes: list, usuarios: dict):
         ))
     db.flush()
 
+def _ya_tiene_datos(db) -> bool:
+    """Retorna True si la base ya fue poblada."""
+    return db.query(Sucursal).first() is not None
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # ENTRY POINT
@@ -351,13 +354,13 @@ def _seed_mantenimientos(db, vehiculos: dict, incidentes: list, usuarios: dict):
 def run_seed():
     print("Inicializando base de datos LoncoExpress")
 
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
-        print("Base de datos anterior eliminada.")
-
     init_db()
 
     with get_session() as db:
+
+        if _ya_tiene_datos(db):
+            print("   La base de datos ya contiene datos. Seed omitido.")
+            return
 
         print("   Creando sucursales")
         sucursales = _seed_sucursales(db)

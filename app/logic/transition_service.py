@@ -4,12 +4,20 @@ app/logic/transition_service.py
 
 Punto único de entrada para cambiar el estado de Solicitud, Asignacion,
 Vehiculo y Conductor.
-
 """
 
 from __future__ import annotations
 
-from app.data.models import Asignacion, Conductor, Solicitud, Vehiculo
+from datetime import datetime
+
+from app.data.models import (
+    Asignacion,
+    Conductor,
+    DocumentacionVehiculo,
+    Mantenimiento,
+    Solicitud,
+    Vehiculo,
+)
 
 
 class TransitionError(Exception):
@@ -52,7 +60,8 @@ _TRANSICIONES_ASIGNACION: dict[str, set[str]] = {
 _TRANSICIONES_VEHICULO: dict[str, set[str]] = {
     "Disponible":        {"Reservado", "Bloqueado", "En_Mantencion", "Fuera_de_Servicio"},
     "Reservado":         {"En_Ruta", "Disponible", "Bloqueado"},
-    "En_Ruta":           {"Disponible", "En_Mantencion", "Fuera_de_Servicio"},
+
+    "En_Ruta":           {"Disponible", "En_Mantencion", "Fuera_de_Servicio", "Bloqueado"},
     "En_Mantencion":     {"Disponible", "Fuera_de_Servicio", "Bloqueado"},
     "Fuera_de_Servicio": {"Disponible", "En_Mantencion", "Bloqueado"},
     "Bloqueado":         {"Disponible"},
@@ -65,11 +74,28 @@ _TRANSICIONES_CONDUCTOR: dict[str, set[str]] = {
     "No_Habilitado": {"Disponible"},
 }
 
+_TRANSICIONES_MANTENIMIENTO: dict[str, set[str]] = {
+    "Pendiente":            {"En_Revision", "Programada"},
+    "Programada":           {"En_Revision"},
+    "En_Revision":          {"En_Espera_Repuestos", "Completada"},
+    "En_Espera_Repuestos":  {"En_Revision", "Completada"},
+    # Estado terminal.
+    "Completada":           set(),
+}
+
+_TRANSICIONES_DOCUMENTO: dict[str, set[str]] = {
+    "Vigente":     {"Por_Vencer", "Vencido"},
+    "Por_Vencer":  {"Vigente", "Vencido"},
+    "Vencido":     {"Vigente"},
+}
+
 _MAPAS_POR_ENTIDAD = {
     Solicitud: _TRANSICIONES_SOLICITUD,
     Asignacion: _TRANSICIONES_ASIGNACION,
     Vehiculo: _TRANSICIONES_VEHICULO,
     Conductor: _TRANSICIONES_CONDUCTOR,
+    Mantenimiento: _TRANSICIONES_MANTENIMIENTO,
+    DocumentacionVehiculo: _TRANSICIONES_DOCUMENTO,
 }
 
 _CAMPO_ESTADO = {
@@ -77,6 +103,8 @@ _CAMPO_ESTADO = {
     Asignacion: "estado_asignacion",
     Vehiculo: "estado_operacional",
     Conductor: "estado_disponibilidad",
+    Mantenimiento: "estado",
+    DocumentacionVehiculo: "estado_documental",
 }
 
 _NOMBRE_ENTIDAD = {
@@ -84,11 +112,13 @@ _NOMBRE_ENTIDAD = {
     Asignacion: "Asignacion",
     Vehiculo: "Vehiculo",
     Conductor: "Conductor",
+    Mantenimiento: "Mantenimiento",
+    DocumentacionVehiculo: "DocumentacionVehiculo",
 }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# NUCLEO GENERICO
+# NUCLEO GENERICO (privado -- no se llama directo desde fuera de este archivo)
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _transicionar(instancia, nuevo_estado: str) -> None:
@@ -133,6 +163,42 @@ def puede_transicionar(instancia, nuevo_estado: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# DISPONIBILIDAD UNIFICADA DE VEHICULO
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _tiene_mantencion_abierta(vehiculo: Vehiculo) -> bool:
+    """True si el vehiculo tiene alguna orden de mantenimiento que no
+    esta en estado terminal (Completada)."""
+    return any(m.estado != "Completada" for m in vehiculo.mantenimientos)
+
+
+def _tiene_documentacion_vencida(vehiculo: Vehiculo) -> bool:
+    """True si el vehiculo tiene al menos un documento en estado Vencido."""
+    return any(d.estado_documental == "Vencido" for d in vehiculo.documentos)
+
+
+def estado_objetivo_vehiculo(vehiculo: Vehiculo) -> str:
+    if _tiene_documentacion_vencida(vehiculo):
+        return "Bloqueado"
+    if _tiene_mantencion_abierta(vehiculo):
+        return "En_Mantencion"
+    return "Disponible"
+
+
+def sincronizar_disponibilidad_vehiculo(session, vehiculo: Vehiculo) -> None:
+    if vehiculo.estado_operacional == "En_Ruta":
+        return
+
+    objetivo = estado_objetivo_vehiculo(vehiculo)
+    if vehiculo.estado_operacional != objetivo:
+        _transicionar(vehiculo, objetivo)
+
+
+def puede_asignarse_vehiculo(vehiculo: Vehiculo) -> bool:
+    return vehiculo.estado_operacional == "Disponible"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # SOLICITUD
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -143,7 +209,8 @@ def evaluar_solicitud(session, solicitud: Solicitud) -> None:
 
 
 def aprobar_solicitud(session, solicitud: Solicitud) -> None:
-    """En_Evaluacion -> Aprobada. """
+    """En_Evaluacion -> Aprobada. Habilita la solicitud para ser tomada
+    desde el formulario de Nueva Asignacion."""
     _transicionar(solicitud, "Aprobada")
     session.commit()
 
@@ -155,7 +222,8 @@ def rechazar_solicitud(session, solicitud: Solicitud) -> None:
 
 def reprogramar_solicitud(session, solicitud: Solicitud, nueva_prioridad: str) -> None:
     """
-    Aprobada o Pendiente_Reasignacion 
+    Aprobada o Pendiente_Reasignacion -> Reprogramada, con cambio de
+    prioridad.
     """
     _transicionar(solicitud, "Reprogramada")
     solicitud.prioridad = nueva_prioridad
@@ -170,13 +238,14 @@ def cancelar_solicitud(session, solicitud: Solicitud) -> None:
 def completar_solicitud(session, solicitud: Solicitud) -> None:
     """
     Aprobada -> Completada.
+
     """
     _transicionar(solicitud, "Completada")
     session.commit()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# VEHICULO / CONDUCTOR 
+# VEHICULO / CONDUCTOR -- transiciones simples sin efectos cruzados
 # ═══════════════════════════════════════════════════════════════════════════
 
 def bloquear_vehiculo(session, vehiculo: Vehiculo) -> None:
@@ -200,6 +269,7 @@ def habilitar_conductor(session, conductor: Conductor) -> None:
 def deshabilitar_conductor(session, conductor: Conductor) -> None:
     """
     Disponible o En_Descanso -> No_Habilitado.
+
     """
     _transicionar(conductor, "No_Habilitado")
     session.commit()
@@ -216,13 +286,14 @@ def marcar_conductor_disponible(session, conductor: Conductor) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ASIGNACION 
+# ASIGNACION -- aqui viven los efectos cruzados (vehiculo + conductor + solicitud)
 # ═══════════════════════════════════════════════════════════════════════════
 
 def confirmar_asignacion(session, asignacion: Asignacion) -> None:
     """
     Pendiente -> Confirmada. El vehiculo pasa a Reservado y el conductor
     a Asignado.
+
     """
     _transicionar(asignacion, "Confirmada")
     _transicionar(asignacion.vehiculo, "Reservado")
@@ -233,6 +304,7 @@ def confirmar_asignacion(session, asignacion: Asignacion) -> None:
 def iniciar_ruta(session, asignacion: Asignacion) -> None:
     """
     Confirmada -> En_Ejecucion. Vehiculo: Reservado -> En_Ruta.
+    Equivalente al Paso 7 del documento (check-out exitoso -> salida).
     """
     _transicionar(asignacion, "En_Ejecucion")
     _transicionar(asignacion.vehiculo, "En_Ruta")
@@ -242,12 +314,14 @@ def iniciar_ruta(session, asignacion: Asignacion) -> None:
 def registrar_entrega(session, asignacion: Asignacion, fue_conforme: bool) -> None:
     """
     En_Ejecucion -> Completada o Completada_Con_Incidencia.
-    Vehiculo: En_Ruta -> Disponible. Conductor: Asignado -> Disponible.
-
+    Conductor: Asignado -> Disponible.
     """
     nuevo_estado = "Completada" if fue_conforme else "Completada_Con_Incidencia"
     _transicionar(asignacion, nuevo_estado)
-    _transicionar(asignacion.vehiculo, "Disponible")
+
+    objetivo = estado_objetivo_vehiculo(asignacion.vehiculo)
+    _transicionar(asignacion.vehiculo, objetivo)
+
     _transicionar(asignacion.conductor, "Disponible")
     session.commit()
 
@@ -269,6 +343,7 @@ def cancelar_asignacion(session, asignacion: Asignacion) -> None:
 def cerrar_asignacion(session, asignacion: Asignacion) -> None:
     """
     Completada o Completada_Con_Incidencia o Fallida o Fallida_Parcial -> Cerrada.
+
     """
     estado_previo = asignacion.estado_asignacion
     _transicionar(asignacion, "Cerrada")
@@ -276,4 +351,67 @@ def cerrar_asignacion(session, asignacion: Asignacion) -> None:
     if estado_previo in ("Completada", "Completada_Con_Incidencia"):
         completar_solicitud(session, asignacion.solicitud)
 
+    session.commit()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MANTENIMIENTO -- efectos cruzados sobre Vehiculo
+# ═══════════════════════════════════════════════════════════════════════════
+
+def abrir_mantenimiento(session, mantenimiento: Mantenimiento) -> None:
+    """
+    Vehiculo -> En_Mantencion. Se llama justo despues de crear la fila
+    de Mantenimiento 
+    """
+    _transicionar(mantenimiento.vehiculo, "En_Mantencion")
+    session.commit()
+
+
+def avanzar_mantenimiento(session, mantenimiento: Mantenimiento, nuevo_estado: str) -> None:
+    _transicionar(mantenimiento, nuevo_estado)
+    session.commit()
+
+
+def completar_mantenimiento(session, mantenimiento: Mantenimiento, tecnico_id: int | None = None) -> None:
+    """
+    En_Revision o En_Espera_Repuestos -> Completada.
+
+    """
+    _transicionar(mantenimiento, "Completada")
+    mantenimiento.fecha_egreso_real = datetime.utcnow()
+    if tecnico_id:
+        mantenimiento.validado_por_tecnico = tecnico_id
+
+    sincronizar_disponibilidad_vehiculo(session, mantenimiento.vehiculo)
+    session.commit()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DOCUMENTACION -- efectos cruzados sobre Vehiculo
+# ═══════════════════════════════════════════════════════════════════════════
+
+def marcar_documento_vencido(session, documento: DocumentacionVehiculo) -> None:
+    """
+    Vigente o Por_Vencer -> Vencido.
+
+    """
+    _transicionar(documento, "Vencido")
+    sincronizar_disponibilidad_vehiculo(session, documento.vehiculo)
+    session.commit()
+
+
+def renovar_documento(session, documento: DocumentacionVehiculo, nueva_fecha: str) -> None:
+    """
+    Vencido o Por_Vencer -> Vigente, con actualizacion de fecha.
+
+    """
+    estado_actual = documento.estado_documental
+    if estado_actual == "Vigente":
+
+        documento.fecha_vencimiento = nueva_fecha
+    else:
+        _transicionar(documento, "Vigente")
+        documento.fecha_vencimiento = nueva_fecha
+
+    sincronizar_disponibilidad_vehiculo(session, documento.vehiculo)
     session.commit()

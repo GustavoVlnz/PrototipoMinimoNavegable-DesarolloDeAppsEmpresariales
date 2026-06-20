@@ -3,7 +3,6 @@ vehiculos_queries.py
 app/data/queries/vehiculos_queries.py
 """
 
-from app.data.database import get_session
 from app.data.models import Vehiculo, Sucursal, Mantenimiento
 
 
@@ -45,96 +44,73 @@ def _vehiculo_a_dict(v: Vehiculo) -> dict:
 
 # ─── Consultas de lectura ─────────────────────────────────────────────────────
 
-def obtener_todos_vehiculos() -> list[dict]:
-    """Retorna todos los vehículos de la flota."""
-    with get_session() as session:
-        vehiculos = session.query(Vehiculo).all()
-        resultado = [_vehiculo_a_dict(v) for v in vehiculos]
-    return resultado
+def obtener_todos_vehiculos(session) -> list[dict]:
+    vehiculos = session.query(Vehiculo).all()
+    return [_vehiculo_a_dict(v) for v in vehiculos]
 
 
-def obtener_vehiculo_por_id(vehiculo_id: int) -> dict | None:
-    """Retorna un vehículo específico por su ID."""
-    with get_session() as session:
-        v = session.query(Vehiculo).filter(Vehiculo.id == vehiculo_id).first()
-        if v:
-            return _vehiculo_a_dict(v)
-    return None
+def obtener_vehiculo_por_id(session, vehiculo_id: int) -> dict | None:
+    v = session.query(Vehiculo).filter(
+        Vehiculo.id == vehiculo_id
+    ).first()
+    return _vehiculo_a_dict(v) if v else None
 
 
-def obtener_vehiculo_por_patente(patente: str) -> dict | None:
-    """Retorna un vehículo por su patente."""
-    with get_session() as session:
-        v = session.query(Vehiculo).filter(Vehiculo.patente == patente).first()
-        if v:
-            return _vehiculo_a_dict(v)
-    return None
+def obtener_vehiculo_por_patente(session, patente: str) -> dict | None:
+    v = session.query(Vehiculo).filter(
+        Vehiculo.patente == patente
+    ).first()
+    return _vehiculo_a_dict(v) if v else None
 
 
-def obtener_vehiculos_por_estado(estado: str) -> list[dict]:
-    """Retorna vehículos filtrados por estado operacional."""
+def obtener_vehiculos_por_estado(session, estado: str) -> list[dict]:
     estado_bd = estado.replace(" ", "_")
-    with get_session() as session:
-        vehiculos = (
-            session.query(Vehiculo)
-            .filter(Vehiculo.estado_operacional == estado_bd)
-            .all()
-        )
-        resultado = [_vehiculo_a_dict(v) for v in vehiculos]
-    return resultado
+    vehiculos = (
+        session.query(Vehiculo)
+        .filter(Vehiculo.estado_operacional == estado_bd)
+        .all()
+    )
+    return [_vehiculo_a_dict(v) for v in vehiculos]
 
 
-def obtener_vehiculos_disponibles() -> list[dict]:
-    """Retorna solo los vehículos con estado 'Disponible'."""
-    return obtener_vehiculos_por_estado("Disponible")
+def obtener_vehiculos_disponibles(session) -> list[dict]:
+    return obtener_vehiculos_por_estado(session, "Disponible")
 
 
-def obtener_sucursales() -> list[str]:
-    """Retorna lista de nombres de sucursales para poblar combos."""
-    with get_session() as session:
-        sucursales = session.query(Sucursal).all()
-        return [s.nombre for s in sucursales]
+def obtener_sucursales(session) -> list[str]:
+    sucursales = session.query(Sucursal).all()
+    return [s.nombre for s in sucursales]
 
 
 # ─── Operaciones de creación ──────────────────────────────────────────────────
 
 def crear_vehiculo(
+    session,
     patente: str,
     tipo: str,
     marca_modelo: str,
     capacidad_kg: int,
     sucursal_nombre: str,
 ) -> bool:
-    """
-    Registra un nuevo vehículo en la flota.
-
-    Args:
-        patente:         Patente única del vehículo (ej: "BKRT-42").
-        tipo:            Uno de: "Camioneta", "Furgon", "Camion_Liviano".
-        marca_modelo:    Descripción del modelo (ej: "Toyota Hilux").
-        capacidad_kg:    Capacidad de carga en kilogramos.
-        sucursal_nombre: Nombre de la sucursal donde se ubica.
-
-    Returns:
-        True si fue exitoso.
-    """
     try:
-        with get_session() as session:
-            sucursal = session.query(Sucursal).filter(
-                Sucursal.nombre == sucursal_nombre
-            ).first()
+        sucursal = session.query(Sucursal).filter(
+            Sucursal.nombre == sucursal_nombre
+        ).first()
 
-            nuevo = Vehiculo(
-                patente=patente.upper(),
-                tipo=tipo.replace(" ", "_"),
-                marca_modelo=marca_modelo,
-                capacidad_kg=capacidad_kg,
-                estado_operacional="Disponible",
-                sucursal_actual_id=sucursal.id if sucursal else None,
-                kilometraje=0,
-            )
-            session.add(nuevo)
+        nuevo = Vehiculo(
+            patente=patente.upper(),
+            tipo=tipo.replace(" ", "_"),
+            marca_modelo=marca_modelo,
+            capacidad_kg=capacidad_kg,
+            estado_operacional="Disponible",
+            sucursal_actual_id=sucursal.id if sucursal else None,
+            kilometraje=0,
+        )
+
+        session.add(nuevo)
+        session.commit()
         return True
+
     except Exception as e:
         print(f"Error al crear vehículo: {e}")
         return False
@@ -142,40 +118,48 @@ def crear_vehiculo(
 
 # ─── Operaciones de actualización ─────────────────────────────────────────────
 
-def actualizar_estado_vehiculo(vehiculo_id: int, nuevo_estado: str) -> bool:
-    """
-    Actualiza el estado operacional de un vehículo.
+def actualizar_estado_vehiculo(
+    session,
+    vehiculo_id: int,
+    nuevo_estado: str
+) -> bool:
 
-    Args:
-        vehiculo_id:  ID del vehículo.
-        nuevo_estado: Uno de: "Disponible", "Reservado", "En_Ruta",
-                      "En_Mantencion", "Fuera_de_Servicio", "Bloqueado".
-
-    Returns:
-        True si fue exitoso.
-    """
     estado_bd = nuevo_estado.replace(" ", "_")
+
     try:
-        with get_session() as session:
-            v = session.query(Vehiculo).filter(Vehiculo.id == vehiculo_id).first()
-            if not v:
-                return False
-            v.estado_operacional = estado_bd
+        v = session.query(Vehiculo).filter(
+            Vehiculo.id == vehiculo_id
+        ).first()
+
+        if not v:
+            return False
+
+        v.estado_operacional = estado_bd
+        session.commit()
         return True
+
     except Exception as e:
         print(f"Error al actualizar estado del vehículo: {e}")
         return False
 
+def actualizar_observacion_vehiculo(
+    session,
+    vehiculo_id: int,
+    observacion: str
+) -> bool:
 
-def actualizar_observacion_vehiculo(vehiculo_id: int, observacion: str) -> bool:
-    """Actualiza el campo de observación de un vehículo."""
     try:
-        with get_session() as session:
-            v = session.query(Vehiculo).filter(Vehiculo.id == vehiculo_id).first()
-            if not v:
-                return False
-            v.observacion = observacion
+        v = session.query(Vehiculo).filter(
+            Vehiculo.id == vehiculo_id
+        ).first()
+
+        if not v:
+            return False
+
+        v.observacion = observacion
+        session.commit()
         return True
+
     except Exception as e:
         print(f"Error al actualizar observación: {e}")
         return False

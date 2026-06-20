@@ -3,7 +3,9 @@ vehiculos_queries.py
 app/data/queries/vehiculos_queries.py
 """
 
-from app.data.models import Vehiculo, Sucursal, Mantenimiento
+from app.data.models import Vehiculo, Sucursal
+from app.logic import transition_service
+from app.logic.transition_service import TransitionError
 
 
 # ─── Helper ORM → dict ────────────────────────────────────────────────────────
@@ -50,16 +52,21 @@ def obtener_todos_vehiculos(session) -> list[dict]:
 
 
 def obtener_vehiculo_por_id(session, vehiculo_id: int) -> dict | None:
-    v = session.query(Vehiculo).filter(
-        Vehiculo.id == vehiculo_id
-    ).first()
+    v = session.query(Vehiculo).filter(Vehiculo.id == vehiculo_id).first()
     return _vehiculo_a_dict(v) if v else None
 
 
+def obtener_vehiculo_orm_por_id(session, vehiculo_id: int) -> Vehiculo | None:
+    """
+    Igual que obtener_vehiculo_por_id(), pero retorna el objeto ORM en
+    vez de un dict. Se usa donde se necesita pasarlo directamente a
+    transition_service.
+    """
+    return session.query(Vehiculo).filter(Vehiculo.id == vehiculo_id).first()
+
+
 def obtener_vehiculo_por_patente(session, patente: str) -> dict | None:
-    v = session.query(Vehiculo).filter(
-        Vehiculo.patente == patente
-    ).first()
+    v = session.query(Vehiculo).filter(Vehiculo.patente == patente).first()
     return _vehiculo_a_dict(v) if v else None
 
 
@@ -92,6 +99,11 @@ def crear_vehiculo(
     capacidad_kg: int,
     sucursal_nombre: str,
 ) -> bool:
+    """
+    Registra un nuevo vehículo en la flota, en estado Disponible por
+    default del modelo. No pasa por transition_service porque es alta
+    de un registro nuevo, no una transición sobre uno existente.
+    """
     try:
         sucursal = session.query(Sucursal).filter(
             Sucursal.nombre == sucursal_nombre
@@ -106,11 +118,9 @@ def crear_vehiculo(
             sucursal_actual_id=sucursal.id if sucursal else None,
             kilometraje=0,
         )
-
         session.add(nuevo)
         session.commit()
         return True
-
     except Exception as e:
         print(f"Error al crear vehículo: {e}")
         return False
@@ -118,48 +128,46 @@ def crear_vehiculo(
 
 # ─── Operaciones de actualización ─────────────────────────────────────────────
 
-def actualizar_estado_vehiculo(
-    session,
-    vehiculo_id: int,
-    nuevo_estado: str
-) -> bool:
-
-    estado_bd = nuevo_estado.replace(" ", "_")
+def bloquear(session, vehiculo_id: int) -> tuple[bool, str | None]:
+    """Bloqueo administrativo manual: Disponible -> Bloqueado."""
+    v = session.query(Vehiculo).filter(Vehiculo.id == vehiculo_id).first()
+    if not v:
+        return False, "El vehículo no existe."
 
     try:
-        v = session.query(Vehiculo).filter(
-            Vehiculo.id == vehiculo_id
-        ).first()
+        transition_service.bloquear_vehiculo(session, v)
+    except TransitionError as e:
+        return False, str(e)
 
-        if not v:
-            return False
+    return True, None
 
-        v.estado_operacional = estado_bd
-        session.commit()
-        return True
 
-    except Exception as e:
-        print(f"Error al actualizar estado del vehículo: {e}")
-        return False
-
-def actualizar_observacion_vehiculo(
-    session,
-    vehiculo_id: int,
-    observacion: str
-) -> bool:
+def desbloquear(session, vehiculo_id: int) -> tuple[bool, str | None]:
+    """Bloqueado -> Disponible."""
+    v = session.query(Vehiculo).filter(Vehiculo.id == vehiculo_id).first()
+    if not v:
+        return False, "El vehículo no existe."
 
     try:
-        v = session.query(Vehiculo).filter(
-            Vehiculo.id == vehiculo_id
-        ).first()
+        transition_service.desbloquear_vehiculo(session, v)
+    except TransitionError as e:
+        return False, str(e)
 
+    return True, None
+
+
+def actualizar_observacion_vehiculo(session, vehiculo_id: int, observacion: str) -> bool:
+    """
+    Actualiza el campo de observación de un vehículo. No es un cambio
+    de estado, así que no pasa por transition_service.
+    """
+    try:
+        v = session.query(Vehiculo).filter(Vehiculo.id == vehiculo_id).first()
         if not v:
             return False
-
         v.observacion = observacion
         session.commit()
         return True
-
     except Exception as e:
         print(f"Error al actualizar observación: {e}")
         return False

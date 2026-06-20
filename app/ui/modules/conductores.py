@@ -1,3 +1,5 @@
+#app/ui/modules/conductores.py
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -15,15 +17,16 @@ from app.logic import conductores_logic
 
 class ConductoresView(QWidget):
 
-    def __init__(self, parent=None):
+    def __init__(self, db_session, parent=None):
         super().__init__(parent)
+        self.db_session = db_session
         self._conductores = []
         self._cargar_conductores()
         self._build_ui()
 
     def _cargar_conductores(self):
         """Carga conductores desde la base de datos."""
-        self._conductores = conductores_queries.obtener_todos_conductores()
+        self._conductores = conductores_queries.obtener_todos_conductores(self.db_session)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -69,10 +72,9 @@ class ConductoresView(QWidget):
     def _build_kpis(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(12)
-        
-        # Usar la función de logic para obtener resumen
+
         resumen = conductores_logic.resumen_conductores(self._conductores)
-        
+
         row.addWidget(KpiCard("Disponibles",    resumen["disponibles"],      color="#16A34A"))
         row.addWidget(KpiCard("Asignados",      resumen["asignados"],        color="#1E5FC3"))
         row.addWidget(KpiCard("En descanso",    resumen["en_descanso"],      color="#D97706"))
@@ -104,9 +106,8 @@ class ConductoresView(QWidget):
     # ── Detalle ───────────────────────────────────────────────────
 
     def _ver_detalle(self, idx: int):
-        dlg = DetalleConductorDialog(self._conductores[idx], self)
+        dlg = DetalleConductorDialog(self._conductores[idx], self.db_session, self)
         if dlg.exec():
-            # Recargar después de cambios
             self._cargar_conductores()
             self._fill_table()
 
@@ -117,16 +118,16 @@ class ConductoresView(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
             conductor_id = conductores_queries.crear_conductor(
+                self.db_session,
                 nombre=data["nombre"],
                 rut=data["rut"],
                 tipo_licencia=data["licencia"],
                 sucursal_nombre=data["sucursal"]
             )
-            
+
             if conductor_id:
                 QMessageBox.information(self, "Conductor agregado",
                                         f"Nuevo conductor {data['nombre']} registrado exitosamente.")
-                # Recargar lista de conductores
                 self._cargar_conductores()
                 self._fill_table()
             else:
@@ -137,9 +138,10 @@ class ConductoresView(QWidget):
 # ─────────────────────────────────────────────────────────────────
 class DetalleConductorDialog(QDialog):
 
-    def __init__(self, conductor: dict, parent=None):
+    def __init__(self, conductor: dict, db_session, parent=None):
         super().__init__(parent)
         self._c = conductor
+        self.db_session = db_session
         self.setWindowTitle(conductor["nombre"])
         self.setMinimumWidth(480)
         self.setModal(True)
@@ -232,20 +234,18 @@ class DetalleConductorDialog(QDialog):
         close_row.addWidget(btn_close)
         layout.addLayout(close_row)
 
-    # ── Acciones (persist en BD vía queries) ────────────────────────────────────────
+    # ── Acciones ─────────────────────────────
 
     def _habilitar(self):
         conductor_id = self._c["conductor_id"]
-        ok = conductores_queries.habilitar_conductor(conductor_id)
+        ok, error = conductores_queries.habilitar(self.db_session, conductor_id)
         if ok:
-            self._c["habilitado"] = True
-            self._c["estado"] = "Disponible"
             QMessageBox.information(self, "Conductor habilitado",
                                     f"{self._c['nombre']} habilitado y disponible.")
             self.accept()
         else:
             QMessageBox.warning(self, "Error",
-                               f"No se pudo habilitar a {self._c['nombre']}.")
+                               error or f"No se pudo habilitar a {self._c['nombre']}.")
 
     def _deshabilitar(self):
         r = QMessageBox.question(self, "Deshabilitar conductor",
@@ -253,40 +253,36 @@ class DetalleConductorDialog(QDialog):
                                  QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if r == QMessageBox.StandardButton.Yes:
             conductor_id = self._c["conductor_id"]
-            ok = conductores_queries.deshabilitar_conductor(conductor_id)
+            ok, error = conductores_queries.deshabilitar(self.db_session, conductor_id)
             if ok:
-                self._c["habilitado"] = False
-                self._c["estado"] = "No Habilitado"
                 QMessageBox.information(self, "Conductor deshabilitado",
                                         f"{self._c['nombre']} deshabilitado.")
                 self.accept()
             else:
                 QMessageBox.warning(self, "Error",
-                                   f"No se pudo deshabilitar a {self._c['nombre']}.")
+                                   error or f"No se pudo deshabilitar a {self._c['nombre']}.")
 
     def _descanso(self):
         conductor_id = self._c["conductor_id"]
-        ok = conductores_queries.actualizar_estado_conductor(conductor_id, "En Descanso")
+        ok, error = conductores_queries.poner_en_descanso(self.db_session, conductor_id)
         if ok:
-            self._c["estado"] = "En Descanso"
             QMessageBox.information(self, "Estado actualizado",
                                     f"{self._c['nombre']} marcado en descanso.")
             self.accept()
         else:
             QMessageBox.warning(self, "Error",
-                               f"No se pudo actualizar el estado de {self._c['nombre']}.")
+                               error or f"No se pudo actualizar el estado de {self._c['nombre']}.")
 
     def _disponible(self):
         conductor_id = self._c["conductor_id"]
-        ok = conductores_queries.actualizar_estado_conductor(conductor_id, "Disponible")
+        ok, error = conductores_queries.marcar_disponible(self.db_session, conductor_id)
         if ok:
-            self._c["estado"] = "Disponible"
             QMessageBox.information(self, "Estado actualizado",
                                     f"{self._c['nombre']} disponible.")
             self.accept()
         else:
             QMessageBox.warning(self, "Error",
-                               f"No se pudo actualizar el estado de {self._c['nombre']}.")
+                               error or f"No se pudo actualizar el estado de {self._c['nombre']}.")
 
 
 # ─────────────────────────────────────────────────────────────────

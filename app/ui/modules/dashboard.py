@@ -14,12 +14,12 @@ from app.logic.dashboard_logic import obtener_datos_dashboard
 class DashboardView(QWidget):
     """Vista del dashboard principal."""
 
-    def __init__(self, parent=None):
+    def __init__(self, db_session, parent=None):
         super().__init__(parent)
-        self._datos = obtener_datos_dashboard()
+        self.db_session = db_session
+        self._datos = obtener_datos_dashboard(self.db_session)
         self._needs_refresh = False
         self._build_ui()
-
 
     # ── Slots ──────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ class DashboardView(QWidget):
 
     def _refresh(self):
         """Recarga datos desde la DB y reconstruye la UI."""
-        self._datos = obtener_datos_dashboard()
+        self._datos = obtener_datos_dashboard(self.db_session)
         self._needs_refresh = False
 
         old_layout = self.layout()

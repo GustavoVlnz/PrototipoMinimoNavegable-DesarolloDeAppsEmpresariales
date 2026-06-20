@@ -2,8 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QDialog, QComboBox, QDateEdit, QMessageBox
 )
-from PyQt6.QtCore import Qt, QDate
-from datetime import date
+from PyQt6.QtCore import QDate
 
 from app.ui.components.widgets import TopBar, make_table, set_table_item, make_alert_item
 from app.data.queries import documentacion_queries
@@ -11,8 +10,9 @@ from app.logic import documentacion_logic
 
 
 class DocumentacionView(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, db_session, parent=None):
         super().__init__(parent)
+        self.db_session = db_session
         self._documentos = []
         self._table = None  # Referencia a la tabla para actualizaciones
         self._cargar_documentos()
@@ -20,8 +20,7 @@ class DocumentacionView(QWidget):
 
     def _cargar_documentos(self):
         """Carga documentos desde la base de datos y calcula vigencia."""
-        documentos_bd = documentacion_queries.obtener_todos_documentos()
-        # Actualizar vigencia de cada documento
+        documentos_bd = documentacion_queries.obtener_todos_documentos(self.db_session)
         for d in documentos_bd:
             dias = documentacion_logic.calcular_dias_restantes(d["vencimiento"])
             d["dias_restantes"] = dias if dias is not None else 0
@@ -33,7 +32,6 @@ class DocumentacionView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Usar lógica para obtener resumen
         resumen = documentacion_logic.resumen_documentacion(self._documentos)
         vencidos = resumen["vencidos"]
         por_vencer = resumen["por_vencer"]
@@ -95,7 +93,6 @@ class DocumentacionView(QWidget):
             set_table_item(self._table, r, 3, dias_str)
             set_table_item(self._table, r, 4, d["estado"], badge=True)
 
-        # Ajustar columnas de texto; la de badge ya fue ajustada por set_table_item
         for col in range(len(cols) - 1):
             self._table.resizeColumnToContents(col)
 
@@ -115,7 +112,7 @@ class DocumentacionView(QWidget):
         """Actualiza solo el contenido de la tabla sin reconstruir la UI."""
         if self._table is None:
             return
-        
+
         self._table.setRowCount(len(self._documentos))
         for r, d in enumerate(self._documentos):
             dias = d["dias_restantes"]
@@ -139,23 +136,25 @@ class DocumentacionView(QWidget):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             doc, fecha = dlg.get_data()
             nueva_fecha_str = fecha.toString("yyyy-MM-dd")
-            
-            # Persistir en BD
+
             documento_id = doc.get("documento_id")
-            ok = documentacion_queries.actualizar_fecha_vencimiento(documento_id, nueva_fecha_str)
-            
+            ok, error = documentacion_queries.renovar(
+                self.db_session, documento_id, nueva_fecha_str
+            )
+
             if ok:
-                # Recargar datos y actualizar tabla sin borrar la vista
                 self._cargar_documentos()
                 self._actualizar_tabla()
                 QMessageBox.information(
                     self, "Renovación registrada",
-                    f"Documento {doc['doc_tipo']} de {doc['vehiculo']} actualizado al {nueva_fecha_str}."
+                    f"Documento {doc['doc_tipo']} de {doc['vehiculo']} actualizado al "
+                    f"{nueva_fecha_str}. Si el vehículo no tiene otros impedimentos, "
+                    f"su disponibilidad fue re-evaluada automáticamente."
                 )
             else:
                 QMessageBox.warning(
                     self, "Error",
-                    f"No se pudo registrar la renovación. Intente nuevamente."
+                    error or "No se pudo registrar la renovación. Intente nuevamente."
                 )
 
 

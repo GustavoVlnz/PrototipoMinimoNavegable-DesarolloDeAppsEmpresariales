@@ -6,19 +6,25 @@ app/ui/modules/mantenimiento.py
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QMessageBox, QDialog,
-    QComboBox, QTextEdit, QLineEdit,
+    QComboBox, QTextEdit,
 )
 
 from app.logic import mantenimiento_logic
 from app.ui.components.widgets import TopBar, make_table, set_table_item
 from app.data.queries import mantenimiento_queries
-from app.logic import mantenimiento_logic
+
+_SIGUIENTE_ESTADO = {
+    "Pendiente":            ("En_Revision", "Marcar En revisión"),
+    "Programada":           ("En_Revision", "Marcar En revisión"),
+    "En_Espera_Repuestos":  ("En_Revision", "Marcar En revisión"),
+}
 
 
 class MantenimientoView(QWidget):
 
-    def __init__(self, parent=None):
+    def __init__(self, db_session, parent=None):
         super().__init__(parent)
+        self.db_session = db_session
         self._ordenes = []
         self._selected_row = -1
         self._cargar_ordenes()
@@ -28,7 +34,7 @@ class MantenimientoView(QWidget):
 
     def _cargar_ordenes(self):
         """Carga órdenes de mantenimiento desde la base de datos."""
-        self._ordenes = mantenimiento_queries.obtener_todos_mantenimientos()
+        self._ordenes = mantenimiento_queries.obtener_todos_mantenimientos(self.db_session)
 
     # ── Construcción UI ───────────────────────────────────────────
 
@@ -58,7 +64,8 @@ class MantenimientoView(QWidget):
         il.setContentsMargins(12, 10, 12, 10)
         il.addWidget(QLabel(
             "Un vehículo solo recupera el estado 'Disponible' "
-            "tras la aprobación del Técnico de Mantención."
+            "tras la aprobación del Técnico de Mantención, y solo si "
+            "no tiene además documentación vencida."
         ))
         c_layout.addWidget(info)
 
@@ -117,22 +124,22 @@ class MantenimientoView(QWidget):
         self._update_action_buttons()
 
     def _update_action_buttons(self):
+
         if self._selected_row < 0:
             self._btn_avanzar.setVisible(False)
             self._btn_habilitar.setVisible(False)
             return
 
         orden = self._ordenes[self._selected_row]
-        acciones = mantenimiento_logic.acciones_disponibles(orden)
+        estado_raw = orden["estado_raw"]
 
-        # Botón avanzar: visible si hay acción de avance, con label dinámico
-        puede_avanzar = "avanzar" in acciones
-        self._btn_avanzar.setVisible(puede_avanzar)
-        if puede_avanzar:
-            self._btn_avanzar.setText(mantenimiento_logic.label_boton_avanzar(orden))
+        destino_avance = _SIGUIENTE_ESTADO.get(estado_raw)
+        self._btn_avanzar.setVisible(destino_avance is not None)
+        if destino_avance:
+            self._btn_avanzar.setText(destino_avance[1])
 
-        # Botón habilitar: visible solo desde 'En Revision'
-        self._btn_habilitar.setVisible("habilitar" in acciones)
+        puede_completar = estado_raw in ("En_Revision", "En_Espera_Repuestos")
+        self._btn_habilitar.setVisible(puede_completar)
 
     # ── Acciones ──────────────────────────────────────────────────
 
@@ -140,15 +147,17 @@ class MantenimientoView(QWidget):
         if self._selected_row < 0:
             return
         orden = self._ordenes[self._selected_row]
+        estado_raw = orden["estado_raw"]
 
-        resultado = mantenimiento_logic.avanzar_estado(orden)
-        if not resultado:
-            QMessageBox.warning(self, "Acción no permitida", resultado.mensaje)
+        destino = _SIGUIENTE_ESTADO.get(estado_raw)
+        if not destino:
+            QMessageBox.warning(self, "Acción no permitida",
+                                f"La OT {orden['id']} no tiene un avance disponible.")
             return
 
-        nuevo_estado = resultado.mensaje  # avanzar_estado retorna el nuevo estado en .mensaje
-        ok = mantenimiento_queries.actualizar_estado_mantenimiento(
-            orden["mantenimiento_id"], nuevo_estado
+        nuevo_estado_raw, _ = destino
+        ok, error = mantenimiento_queries.avanzar_mantenimiento_orden(
+            self.db_session, orden["mantenimiento_id"], nuevo_estado_raw
         )
         if ok:
             self._cargar_ordenes()
@@ -157,51 +166,54 @@ class MantenimientoView(QWidget):
             self._update_action_buttons()
             QMessageBox.information(
                 self, "Estado actualizado",
-                f"Orden {orden['id']} pasó a '{nuevo_estado}'."
+                f"Orden {orden['id']} pasó a '{nuevo_estado_raw.replace('_', ' ')}'."
             )
         else:
-            QMessageBox.critical(self, "Error", "No se pudo actualizar el estado.")
+            QMessageBox.critical(self, "Error", error or "No se pudo actualizar el estado.")
 
     def _habilitar_vehiculo(self):
+
         if self._selected_row < 0:
             return
         orden = self._ordenes[self._selected_row]
 
-        if not mantenimiento_logic.puede_habilitar_vehiculo(orden):
+        if orden["estado_raw"] not in ("En_Revision", "En_Espera_Repuestos"):
             QMessageBox.warning(
                 self, "Acción no permitida",
-                "Solo se puede habilitar desde estado 'En Revisión'."
+                "Solo se puede habilitar desde 'En Revisión' o 'En Espera de Repuestos'."
             )
             return
 
         reply = QMessageBox.question(
             self, "Validación técnica",
             f"¿Confirmar habilitación del vehículo {orden['vehiculo_patente']}?\n\n"
-            f"Esto cambiará su estado a 'Disponible' y cerrará la OT {orden['id']}.",
+            f"Esto cerrará la OT {orden['id']}. El vehículo pasará a 'Disponible' "
+            f"solo si además no tiene documentación vencida.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            ok = mantenimiento_queries.habilitar_vehiculo(orden["mantenimiento_id"])
+            ok, error = mantenimiento_queries.completar_orden(
+                self.db_session, orden["mantenimiento_id"]
+            )
             if ok:
                 self._cargar_ordenes()
                 self._fill_table()
                 self._selected_row = -1
                 self._update_action_buttons()
                 QMessageBox.information(
-                    self, "Vehículo habilitado",
-                    f"Vehículo {orden['vehiculo_patente']} habilitado.\n"
-                    f"OT {orden['id']} cerrada."
+                    self, "OT cerrada",
+                    f"OT {orden['id']} cerrada. Verifica el estado final del vehículo "
+                    f"{orden['vehiculo_patente']} en el módulo Vehículos."
                 )
             else:
-                QMessageBox.critical(self, "Error", "No se pudo habilitar el vehículo.")
+                QMessageBox.critical(self, "Error", error or "No se pudo habilitar el vehículo.")
 
     def _nueva_ot(self):
-        patentes = mantenimiento_queries.obtener_patentes_vehiculos()
+        patentes = mantenimiento_queries.obtener_patentes_vehiculos(self.db_session)
         dlg = NuevaOTDialog(self, patentes=patentes)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             data = dlg.get_data()
 
-            # Validar con lógica de negocio
             resultado = mantenimiento_logic.validar_nueva_ot(
                 vehiculo_id=data["vehiculo_id"],
                 tipo_mantencion=data["tipo"],
@@ -212,7 +224,8 @@ class MantenimientoView(QWidget):
                 QMessageBox.warning(self, "Datos inválidos", resultado.mensaje)
                 return
 
-            ok = mantenimiento_queries.crear_orden_mantenimiento(
+            ok, error = mantenimiento_queries.crear_orden_mantenimiento(
+                self.db_session,
                 vehiculo_id=data["vehiculo_id"],
                 tipo_mantencion=data["tipo"].replace(" ", "_"),
                 descripcion=data["descripcion"],
@@ -227,7 +240,7 @@ class MantenimientoView(QWidget):
                     f"El vehículo fue marcado como 'En Mantención'."
                 )
             else:
-                QMessageBox.critical(self, "Error", "No se pudo registrar la orden.")
+                QMessageBox.critical(self, "Error", error or "No se pudo registrar la orden.")
 
 
 # ─────────────────────────────────────────────────────────────────

@@ -53,14 +53,14 @@ class MainWindow(QMainWindow):
         root.addWidget(self._stack)
 
         self._pages = [
-            DashboardView(),
+            DashboardView(self._db_session),
             SolicitudesView(self._db_session),   
-            VehiculosView(),
-            ConductoresView(),
+            VehiculosView(self._db_session),
+            ConductoresView(self._db_session),
             AsignacionesView(self._db_session), 
             IncidentesView(),
-            MantenimientoView(),
-            DocumentacionView(),
+            MantenimientoView(self._db_session),
+            DocumentacionView(self._db_session),
             ReportesView(),
             ContingenciaView(),
         ]

@@ -1,6 +1,6 @@
 """
 Módulo Vehículos — LoncoExpress.
-Refactorizado para usar vehiculos_queries y vehiculos_logic (sin mock_data).
+Refactorizado para usar vehiculos_queries y vehiculos_logic.
 """
 
 from PyQt6.QtCore import Qt
@@ -17,13 +17,14 @@ from app.ui.components.widgets import (
     make_badge, KpiCard, make_action_button, make_info_frame,
 )
 from app.data.queries import vehiculos_queries
-from app.logic import vehiculos_logic
 
 
 class VehiculosView(QWidget):
 
-    def __init__(self, parent=None):
+    def __init__(self, db_session, parent=None):
         super().__init__(parent)
+
+        self.db_session = db_session
         self._vehiculos = []
         self._cargar_vehiculos()
         self._stack = QStackedWidget()
@@ -33,7 +34,7 @@ class VehiculosView(QWidget):
 
     def _cargar_vehiculos(self):
         """Carga vehículos desde la base de datos."""
-        self._vehiculos = vehiculos_queries.obtener_todos_vehiculos()
+        self._vehiculos = vehiculos_queries.obtener_todos_vehiculos(self.db_session)
 
     # ── Construcción UI ───────────────────────────────────────────
 
@@ -69,7 +70,7 @@ class VehiculosView(QWidget):
         p_layout = QVBoxLayout(panel)
         p_layout.setContentsMargins(16, 12, 16, 16)
 
-        hint = QLabel("Haz clic en «Gestionar» para ver detalle o ejecutar acciones.")
+        hint = QLabel("Haz clic en Gestionar para ver detalle o ejecutar acciones.")
         hint.setObjectName("page_subtitle")
         p_layout.addWidget(hint)
 
@@ -153,58 +154,67 @@ class VehiculosView(QWidget):
     # ── Acciones ──────────────────────────────────────────────────
 
     def _toggle_bloqueo(self, vehiculo: dict):
-        resultado = vehiculos_logic.toggle_bloqueo(vehiculo)
-        if not resultado:
-            QMessageBox.warning(self, "Acción no permitida", resultado.mensaje)
+        estado_raw = vehiculo.get("estado_raw", "")
+
+        if estado_raw == "Disponible":
+            ok, error = vehiculos_queries.bloquear(self.db_session, vehiculo["vehiculo_id"])
+            mensaje_exito = f"Vehículo {vehiculo['patente']} bloqueado administrativamente."
+        elif estado_raw == "Bloqueado":
+            ok, error = vehiculos_queries.desbloquear(self.db_session, vehiculo["vehiculo_id"])
+            mensaje_exito = f"Vehículo {vehiculo['patente']} desbloqueado. Vuelve a 'Disponible'."
+        else:
+            QMessageBox.warning(
+                self, "Acción no permitida",
+                f"No se puede cambiar el bloqueo desde el estado actual "
+                f"('{vehiculo.get('estado', estado_raw)}'). Solo es posible "
+                f"desde 'Disponible' o 'Bloqueado'."
+            )
             return
 
-        nuevo_estado = vehiculos_logic.nuevo_estado_tras_toggle(vehiculo["estado"])
-        ok = vehiculos_queries.actualizar_estado_vehiculo(
-            vehiculo["vehiculo_id"], nuevo_estado
-        )
         if ok:
-            QMessageBox.information(self, "Estado actualizado", resultado.mensaje)
+            QMessageBox.information(self, "Estado actualizado", mensaje_exito)
             self._volver()
         else:
-            QMessageBox.critical(self, "Error", "No se pudo actualizar el estado en la base de datos.")
+            QMessageBox.critical(self, "Error", error or "No se pudo actualizar el estado en la base de datos.")
 
     def _agregar(self):
-            sucursales = vehiculos_queries.obtener_sucursales()
-            if not sucursales:
-                QMessageBox.warning(self, "Sin sucursales",
-                                    "No hay sucursales registradas en la base de datos.")
+        sucursales = vehiculos_queries.obtener_sucursales(self.db_session)
+        if not sucursales:
+            QMessageBox.warning(self, "Sin sucursales",
+                                "No hay sucursales registradas en la base de datos.")
+            return
+
+        dlg = AgregarVehiculoDialog(self, sucursales=sucursales)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            data = dlg.get_data()
+
+            resultado = vehiculos_logic.validar_nuevo_vehiculo(
+                patente=data["patente"],
+                tipo=data["tipo"],
+                capacidad_kg=data["capacidad_kg"],
+                vehiculos_existentes=self._vehiculos,
+            )
+            if not resultado:
+                QMessageBox.warning(self, "Datos inválidos", resultado.mensaje)
                 return
 
-            dlg = AgregarVehiculoDialog(self, sucursales=sucursales)
-            if dlg.exec() == QDialog.DialogCode.Accepted:
-                data = dlg.get_data()
-
-                resultado = vehiculos_logic.validar_nuevo_vehiculo(
-                    patente=data["patente"],
-                    tipo=data["tipo"],
-                    capacidad_kg=data["capacidad_kg"],
-                    vehiculos_existentes=self._vehiculos,
+            ok = vehiculos_queries.crear_vehiculo(
+                self.db_session,
+                patente=data["patente"],
+                tipo=data["tipo"].replace(" ", "_"),
+                marca_modelo=data["modelo"],
+                capacidad_kg=data["capacidad_kg"],
+                sucursal_nombre=data["ubicacion"],
+            )
+            if ok:
+                self._cargar_vehiculos()
+                self._fill_table()
+                QMessageBox.information(
+                    self, "Vehículo agregado",
+                    f"Vehículo {data['patente']} registrado en la flota."
                 )
-                if not resultado:
-                    QMessageBox.warning(self, "Datos inválidos", resultado.mensaje)
-                    return
-
-                ok = vehiculos_queries.crear_vehiculo(
-                    patente=data["patente"],
-                    tipo=data["tipo"].replace(" ", "_"),
-                    marca_modelo=data["modelo"],
-                    capacidad_kg=data["capacidad_kg"],
-                    sucursal_nombre=data["ubicacion"],
-                )
-                if ok:
-                    self._cargar_vehiculos()
-                    self._fill_table()
-                    QMessageBox.information(
-                        self, "Vehículo agregado",
-                        f"Vehículo {data['patente']} registrado en la flota."
-                    )
-                else:
-                    QMessageBox.critical(self, "Error", "No se pudo registrar el vehículo.")
+            else:
+                QMessageBox.critical(self, "Error", "No se pudo registrar el vehículo.")
 
 
 # ─────────────────────────────────────────────────────────────────

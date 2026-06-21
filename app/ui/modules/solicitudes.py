@@ -31,6 +31,7 @@ from app.logic.solicitudes_service import (
 )
 from app.logic import transition_service
 from app.data.models import Solicitud
+from app.core.events import event_bus
 
 
 class SolicitudesView(QWidget):
@@ -39,6 +40,7 @@ class SolicitudesView(QWidget):
         self.db_session = db_session
         self.setObjectName("content_area")
         self._build_ui()
+        event_bus.solicitud_actualizada.connect(self._recargar)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)

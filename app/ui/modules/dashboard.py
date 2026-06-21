@@ -1,4 +1,5 @@
 """
+app/ui/modules/dashboard.py
 Módulo Dashboard — Vista principal con KPIs, alertas y actividad reciente.
 """
 
@@ -7,8 +8,15 @@ from PyQt6.QtWidgets import (
     QScrollArea, QFrame,
 )
 
-from app.ui.components.widgets import KpiCard, make_table, set_table_item, make_alert_item, TopBar
+from app.ui.components.widgets import (
+    KpiCard,
+    make_table,
+    set_table_item,
+    make_alert_item,
+    TopBar,
+)
 from app.logic.dashboard_logic import obtener_datos_dashboard
+from app.core.events import event_bus
 
 
 class DashboardView(QWidget):
@@ -16,71 +24,97 @@ class DashboardView(QWidget):
 
     def __init__(self, db_session, parent=None):
         super().__init__(parent)
+
         self.db_session = db_session
         self._datos = obtener_datos_dashboard(self.db_session)
         self._needs_refresh = False
-        self._build_ui()
 
-    # ── Slots ──────────────────────────────────────────────────────────────────
+        self.scroll = None
+
+        self._build_ui()
+        self._connect_events()
+
+    # ── Eventos globales ──────────────────────────────────────────────────────
+
+    def _connect_events(self):
+        """Conecta el dashboard a los eventos que afectan sus KPIs y alertas."""
+        event_bus.vehiculo_actualizado.connect(self._marcar_para_refresh)
+        event_bus.conductor_actualizado.connect(self._marcar_para_refresh)
+        event_bus.asignacion_actualizada.connect(self._marcar_para_refresh)
+        event_bus.solicitud_actualizada.connect(self._marcar_para_refresh)
+        event_bus.mantenimiento_actualizado.connect(self._marcar_para_refresh)
+        event_bus.documento_actualizado.connect(self._marcar_para_refresh)
 
     def _marcar_para_refresh(self):
-        """Marca que hay datos nuevos pendientes de mostrar."""
-        self._needs_refresh = True
+        """
+        Marca datos pendientes de actualización.
+
+        Si el dashboard está visible, refresca inmediatamente.
+        Si no está visible, refresca cuando el usuario vuelva a entrar.
+        """
+        if self.isVisible():
+            self._refresh()
+        else:
+            self._needs_refresh = True
 
     def showEvent(self, event):
-        """Se ejecuta cada vez que el dashboard se vuelve visible."""
+        """Se ejecuta cada vez que el dashboard vuelve a mostrarse."""
         super().showEvent(event)
+
         if self._needs_refresh:
             self._refresh()
 
     # ── Recarga interna ───────────────────────────────────────────────────────
 
     def _refresh(self):
-        """Recarga datos desde la DB y reconstruye la UI."""
+        """Recarga datos desde la BD y reemplaza solo el contenido del scroll."""
         self._datos = obtener_datos_dashboard(self.db_session)
         self._needs_refresh = False
 
-        old_layout = self.layout()
-        if old_layout:
-            while old_layout.count():
-                item = old_layout.takeAt(0)
-                if item.widget():
-                    item.widget().deleteLater()
+        old_content = self.scroll.takeWidget()
+        if old_content:
+            old_content.deleteLater()
 
-        self._build_ui()
+        self.scroll.setWidget(self._build_content())
 
     # ── Construcción de la UI ─────────────────────────────────────────────────
 
     def _build_ui(self):
+        """
+        Construye la estructura principal una sola vez.
+
+        """
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        layout.addWidget(TopBar(
-            "Dashboard",
-            f"Resumen operativo del día — {_today()}",
-        ))
+        layout.addWidget(
+            TopBar(
+                "Dashboard",
+                f"Resumen operativo del día — {_today()}",
+            )
+        )
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setWidget(self._build_content())
+        layout.addWidget(self.scroll)
 
+    def _build_content(self) -> QWidget:
+        """Construye el contenido recargable del dashboard."""
         content = QWidget()
         content.setObjectName("content_area")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(28, 24, 28, 28)
         content_layout.setSpacing(20)
-
         content_layout.addWidget(self._make_kpi_row())
-
         bottom_row = QHBoxLayout()
         bottom_row.setSpacing(20)
         bottom_row.addWidget(self._make_actividad_reciente(), stretch=3)
         bottom_row.addWidget(self._make_alertas_panel(), stretch=2)
         content_layout.addLayout(bottom_row)
-
-        scroll.setWidget(content)
-        layout.addWidget(scroll)
+        return content
 
     # ── Secciones ─────────────────────────────────────────────────────────────
 
@@ -93,12 +127,36 @@ class DashboardView(QWidget):
         layout.setSpacing(16)
 
         for card in [
-            KpiCard("Vehículos Disponibles",   cards["vehiculos_disponibles"],   color="#16A34A"),
-            KpiCard("En Ruta",                  cards["en_ruta"],                 color="#1E5FC3"),
-            KpiCard("Bloqueados / F. Servicio", cards["bloqueados_fuera_serv"],   color="#DC2626"),
-            KpiCard("En Mantención",            cards["en_mantencion"],           color="#D97706"),
-            KpiCard("Alertas Activas",          cards["alertas_activas"],         color="#EA580C"),
-            KpiCard("Conductores Disponibles",  cards["conductores_disponibles"], color="#D9CF1D"),
+            KpiCard(
+                "Vehículos Disponibles",
+                cards["vehiculos_disponibles"],
+                color="#16A34A",
+            ),
+            KpiCard(
+                "En Ruta",
+                cards["en_ruta"],
+                color="#1E5FC3",
+            ),
+            KpiCard(
+                "Bloqueados / F. Servicio",
+                cards["bloqueados_fuera_serv"],
+                color="#DC2626",
+            ),
+            KpiCard(
+                "En Mantención",
+                cards["en_mantencion"],
+                color="#D97706",
+            ),
+            KpiCard(
+                "Alertas Activas",
+                cards["alertas_activas"],
+                color="#EA580C",
+            ),
+            KpiCard(
+                "Conductores Disponibles",
+                cards["conductores_disponibles"],
+                color="#D9CF1D",
+            ),
         ]:
             layout.addWidget(card)
 
@@ -109,13 +167,14 @@ class DashboardView(QWidget):
 
         panel = QFrame()
         panel.setObjectName("panel")
+
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
         layout.addWidget(_section_header("Asignaciones del Día"))
 
-        cols  = ["ID", "Vehículo", "Conductor", "Origen → Destino", "Estado", "Inicio"]
+        cols = ["ID", "Vehículo", "Conductor", "Origen → Destino", "Estado", "Inicio"]
         table = make_table(cols, row_height=42)
         table.setRowCount(len(asignaciones))
 
@@ -133,18 +192,15 @@ class DashboardView(QWidget):
 
     def _make_alertas_panel(self) -> QFrame:
         alertas = self._datos["alertas"]
-
         panel = QFrame()
         panel.setObjectName("panel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(8)
-
         layout.addWidget(_section_header(f"Alertas  ({len(alertas)})"))
 
         for alerta in alertas:
             layout.addWidget(make_alert_item(alerta["nivel"], alerta["mensaje"]))
-
         layout.addStretch()
         return panel
 
@@ -159,7 +215,22 @@ def _section_header(texto: str) -> QLabel:
 
 def _today() -> str:
     from datetime import date
+
     d = date.today()
-    meses = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
-             "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    meses = [
+        "",
+        "enero",
+        "febrero",
+        "marzo",
+        "abril",
+        "mayo",
+        "junio",
+        "julio",
+        "agosto",
+        "septiembre",
+        "octubre",
+        "noviembre",
+        "diciembre",
+    ]
+
     return f"{d.day} de {meses[d.month]} de {d.year}"

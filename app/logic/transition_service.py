@@ -4,7 +4,6 @@ app/logic/transition_service.py
 
 Punto único de entrada para cambiar el estado de Solicitud, Asignacion,
 Vehiculo y Conductor.
-
 """
 
 from __future__ import annotations
@@ -19,6 +18,7 @@ from app.data.models import (
     Solicitud,
     Vehiculo,
 )
+from app.core.events import event_bus
 
 
 class TransitionError(Exception):
@@ -30,14 +30,12 @@ class TransitionError(Exception):
 # ═══════════════════════════════════════════════════════════════════════════
 # MAPAS DE TRANSICION VALIDA POR ENTIDAD
 # ═══════════════════════════════════════════════════════════════════════════
-
 _TRANSICIONES_SOLICITUD: dict[str, set[str]] = {
     "Creada":                  {"En_Evaluacion", "Cancelada"},
     "En_Evaluacion":           {"Aprobada", "Rechazada", "Cancelada"},
     "Aprobada":                {"Pendiente_Reasignacion", "Completada", "Cancelada"},
     "Pendiente_Reasignacion":  {"Aprobada", "Reprogramada", "Cancelada"},
     "Reprogramada":            {"Aprobada", "Cancelada"},
-    # Estados terminales: no admiten salida.
     "Rechazada":               set(),
     "Cancelada":                set(),
     "Completada":              set(),
@@ -53,7 +51,6 @@ _TRANSICIONES_ASIGNACION: dict[str, set[str]] = {
     "Completada_Con_Incidencia": {"Cerrada"},
     "Fallida":                   {"Cerrada"},
     "Fallida_Parcial":           {"Cerrada"},
-    # Estado terminal.
     "Cerrada":                   set(),
 }
 
@@ -78,7 +75,6 @@ _TRANSICIONES_MANTENIMIENTO: dict[str, set[str]] = {
     "Programada":           {"En_Revision"},
     "En_Revision":          {"En_Espera_Repuestos", "Completada"},
     "En_Espera_Repuestos":  {"En_Revision", "Completada"},
-    # Estado terminal.
     "Completada":           set(),
 }
 
@@ -124,6 +120,7 @@ def _transicionar(instancia, nuevo_estado: str) -> None:
     """
     Valida y aplica un cambio de estado sobre una instancia ORM, usando el
     mapa de transiciones correspondiente a su clase.
+
     """
     tipo = type(instancia)
     mapa = _MAPAS_POR_ENTIDAD.get(tipo)
@@ -151,6 +148,7 @@ def _transicionar(instancia, nuevo_estado: str) -> None:
 
 
 def puede_transicionar(instancia, nuevo_estado: str) -> bool:
+
     tipo = type(instancia)
     mapa = _MAPAS_POR_ENTIDAD.get(tipo)
     if mapa is None:
@@ -187,7 +185,6 @@ def sincronizar_disponibilidad_vehiculo(session, vehiculo: Vehiculo) -> None:
     """
     Re-evalua y aplica el estado del vehiculo segun
     estado_objetivo_vehiculo(), EXCEPTO si el vehiculo esta En_Ruta
-    (viaje en curso no se interrumpe por un vencimiento administrativo).
     """
     if vehiculo.estado_operacional == "En_Ruta":
         return
@@ -202,6 +199,10 @@ def puede_asignarse_vehiculo(vehiculo: Vehiculo) -> bool:
 
 
 def vehiculos_bloqueados_por_documentacion(vehiculos: list[Vehiculo]) -> list[Vehiculo]:
+    """
+    Filtra, de una lista de vehiculos, los que estan Bloqueados
+    especificamente por documentacion vencida (no por mantencion).
+    """
     return [
         v for v in vehiculos
         if v.estado_operacional == "Bloqueado" and _tiene_documentacion_vencida(v)
@@ -209,7 +210,11 @@ def vehiculos_bloqueados_por_documentacion(vehiculos: list[Vehiculo]) -> list[Ve
 
 
 def vehiculos_en_mantencion_abierta(vehiculos: list[Vehiculo]) -> list[Vehiculo]:
-
+    """
+    Filtra, de una lista de vehiculos, los que tienen una orden de
+    mantenimiento sin completar (sin importar el estado_operacional
+    actual
+    """
     return [v for v in vehiculos if _tiene_mantencion_abierta(v)]
 
 
@@ -221,6 +226,7 @@ def evaluar_solicitud(session, solicitud: Solicitud) -> None:
     """Creada -> En_Evaluacion. Paso intermedio antes de aprobar/rechazar."""
     _transicionar(solicitud, "En_Evaluacion")
     session.commit()
+    event_bus.solicitud_actualizada.emit()
 
 
 def aprobar_solicitud(session, solicitud: Solicitud) -> None:
@@ -228,11 +234,13 @@ def aprobar_solicitud(session, solicitud: Solicitud) -> None:
     desde el formulario de Nueva Asignacion."""
     _transicionar(solicitud, "Aprobada")
     session.commit()
+    event_bus.solicitud_actualizada.emit()
 
 
 def rechazar_solicitud(session, solicitud: Solicitud) -> None:
     _transicionar(solicitud, "Rechazada")
     session.commit()
+    event_bus.solicitud_actualizada.emit()
 
 
 def reprogramar_solicitud(session, solicitud: Solicitud, nueva_prioridad: str) -> None:
@@ -244,17 +252,18 @@ def reprogramar_solicitud(session, solicitud: Solicitud, nueva_prioridad: str) -
     _transicionar(solicitud, "Reprogramada")
     solicitud.prioridad = nueva_prioridad
     session.commit()
+    event_bus.solicitud_actualizada.emit()
 
 
 def cancelar_solicitud(session, solicitud: Solicitud) -> None:
     _transicionar(solicitud, "Cancelada")
     session.commit()
+    event_bus.solicitud_actualizada.emit()
 
 
 def completar_solicitud(session, solicitud: Solicitud) -> None:
     """
     Aprobada -> Completada.
-
     """
     _transicionar(solicitud, "Completada")
     session.commit()
@@ -268,18 +277,21 @@ def bloquear_vehiculo(session, vehiculo: Vehiculo) -> None:
     """Disponible -> Bloqueado. Bloqueo administrativo manual."""
     _transicionar(vehiculo, "Bloqueado")
     session.commit()
+    event_bus.vehiculo_actualizado.emit()
 
 
 def desbloquear_vehiculo(session, vehiculo: Vehiculo) -> None:
     """Bloqueado -> Disponible."""
     _transicionar(vehiculo, "Disponible")
     session.commit()
+    event_bus.vehiculo_actualizado.emit()
 
 
 def habilitar_conductor(session, conductor: Conductor) -> None:
     """No_Habilitado -> Disponible."""
     _transicionar(conductor, "Disponible")
     session.commit()
+    event_bus.conductor_actualizado.emit()
 
 
 def deshabilitar_conductor(session, conductor: Conductor) -> None:
@@ -288,16 +300,19 @@ def deshabilitar_conductor(session, conductor: Conductor) -> None:
     """
     _transicionar(conductor, "No_Habilitado")
     session.commit()
+    event_bus.conductor_actualizado.emit()
 
 
 def poner_conductor_en_descanso(session, conductor: Conductor) -> None:
     _transicionar(conductor, "En_Descanso")
     session.commit()
+    event_bus.conductor_actualizado.emit()
 
 
 def marcar_conductor_disponible(session, conductor: Conductor) -> None:
     _transicionar(conductor, "Disponible")
     session.commit()
+    event_bus.conductor_actualizado.emit()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -314,6 +329,9 @@ def confirmar_asignacion(session, asignacion: Asignacion) -> None:
     _transicionar(asignacion.vehiculo, "Reservado")
     _transicionar(asignacion.conductor, "Asignado")
     session.commit()
+    event_bus.asignacion_actualizada.emit()
+    event_bus.vehiculo_actualizado.emit()
+    event_bus.conductor_actualizado.emit()
 
 
 def iniciar_ruta(session, asignacion: Asignacion) -> None:
@@ -324,6 +342,8 @@ def iniciar_ruta(session, asignacion: Asignacion) -> None:
     _transicionar(asignacion, "En_Ejecucion")
     _transicionar(asignacion.vehiculo, "En_Ruta")
     session.commit()
+    event_bus.asignacion_actualizada.emit()
+    event_bus.vehiculo_actualizado.emit()
 
 
 def registrar_entrega(session, asignacion: Asignacion, fue_conforme: bool) -> None:
@@ -340,6 +360,9 @@ def registrar_entrega(session, asignacion: Asignacion, fue_conforme: bool) -> No
 
     _transicionar(asignacion.conductor, "Disponible")
     session.commit()
+    event_bus.asignacion_actualizada.emit()
+    event_bus.vehiculo_actualizado.emit()
+    event_bus.conductor_actualizado.emit()
 
 
 def cancelar_asignacion(session, asignacion: Asignacion) -> None:
@@ -350,17 +373,19 @@ def cancelar_asignacion(session, asignacion: Asignacion) -> None:
     _transicionar(asignacion, "Fallida")
     _transicionar(asignacion.vehiculo, "Disponible")
     _transicionar(asignacion.conductor, "Disponible")
-
     if asignacion.solicitud.estado_solicitud != "Aprobada":
         _transicionar(asignacion.solicitud, "Aprobada")
 
     session.commit()
+    event_bus.asignacion_actualizada.emit()
+    event_bus.vehiculo_actualizado.emit()
+    event_bus.conductor_actualizado.emit()
+    event_bus.solicitud_actualizada.emit()
 
 
 def cerrar_asignacion(session, asignacion: Asignacion) -> None:
     """
     Completada o Completada_Con_Incidencia o Fallida o Fallida_Parcial -> Cerrada.
-
     """
     estado_previo = asignacion.estado_asignacion
     _transicionar(asignacion, "Cerrada")
@@ -369,6 +394,8 @@ def cerrar_asignacion(session, asignacion: Asignacion) -> None:
         completar_solicitud(session, asignacion.solicitud)
 
     session.commit()
+    event_bus.asignacion_actualizada.emit()
+    event_bus.solicitud_actualizada.emit()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -377,15 +404,20 @@ def cerrar_asignacion(session, asignacion: Asignacion) -> None:
 
 def abrir_mantenimiento(session, mantenimiento: Mantenimiento) -> None:
     """
-    Vehiculo -> En_Mantencion.
+    Vehiculo -> En_Mantencion. Se llama justo despues de crear la fila
+    de Mantenimiento (que ya nace en 'Pendiente' por default del
+    modelo).
     """
     _transicionar(mantenimiento.vehiculo, "En_Mantencion")
     session.commit()
+    event_bus.mantenimiento_actualizado.emit()
+    event_bus.vehiculo_actualizado.emit()
 
 
 def avanzar_mantenimiento(session, mantenimiento: Mantenimiento, nuevo_estado: str) -> None:
     _transicionar(mantenimiento, nuevo_estado)
     session.commit()
+    event_bus.mantenimiento_actualizado.emit()
 
 
 def completar_mantenimiento(session, mantenimiento: Mantenimiento, tecnico_id: int | None = None) -> None:
@@ -400,6 +432,8 @@ def completar_mantenimiento(session, mantenimiento: Mantenimiento, tecnico_id: i
 
     sincronizar_disponibilidad_vehiculo(session, mantenimiento.vehiculo)
     session.commit()
+    event_bus.mantenimiento_actualizado.emit()
+    event_bus.vehiculo_actualizado.emit()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -413,11 +447,14 @@ def marcar_documento_vencido(session, documento: DocumentacionVehiculo) -> None:
     _transicionar(documento, "Vencido")
     sincronizar_disponibilidad_vehiculo(session, documento.vehiculo)
     session.commit()
+    event_bus.documento_actualizado.emit()
+    event_bus.vehiculo_actualizado.emit()
 
 
 def renovar_documento(session, documento: DocumentacionVehiculo, nueva_fecha: str) -> None:
     """
     Vencido o Por_Vencer -> Vigente, con actualizacion de fecha.
+
 
     """
     estado_actual = documento.estado_documental
@@ -430,3 +467,5 @@ def renovar_documento(session, documento: DocumentacionVehiculo, nueva_fecha: st
 
     sincronizar_disponibilidad_vehiculo(session, documento.vehiculo)
     session.commit()
+    event_bus.documento_actualizado.emit()
+    event_bus.vehiculo_actualizado.emit()

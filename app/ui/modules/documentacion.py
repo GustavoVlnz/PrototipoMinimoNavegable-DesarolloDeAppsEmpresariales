@@ -1,3 +1,5 @@
+#app/ui/modules/documentacion.py
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QDialog, QComboBox, QDateEdit, QMessageBox
@@ -7,6 +9,7 @@ from PyQt6.QtCore import QDate
 from app.ui.components.widgets import TopBar, make_table, set_table_item, make_alert_item
 from app.data.queries import documentacion_queries
 from app.logic import documentacion_logic
+from app.core.events import event_bus
 
 
 class DocumentacionView(QWidget):
@@ -17,6 +20,11 @@ class DocumentacionView(QWidget):
         self._table = None  # Referencia a la tabla para actualizaciones
         self._cargar_documentos()
         self._build_ui()
+        event_bus.documento_actualizado.connect(self._on_documento_actualizado)
+
+    def _on_documento_actualizado(self):
+        self._cargar_documentos()
+        self._actualizar_tabla()
 
     def _cargar_documentos(self):
         """Carga documentos desde la base de datos y calcula vigencia."""
@@ -132,6 +140,7 @@ class DocumentacionView(QWidget):
         self._build_ui()
 
     def _registrar_renovacion(self):
+
         dlg = RegistrarRenovacionDialog(self._documentos, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             doc, fecha = dlg.get_data()

@@ -13,6 +13,7 @@ from app.ui.components.widgets import (
 )
 from app.data.queries import conductores_queries
 from app.logic import conductores_logic
+from app.core.events import event_bus
 
 
 class ConductoresView(QWidget):
@@ -23,6 +24,11 @@ class ConductoresView(QWidget):
         self._conductores = []
         self._cargar_conductores()
         self._build_ui()
+        event_bus.conductor_actualizado.connect(self._on_conductor_actualizado)
+
+    def _on_conductor_actualizado(self):
+        self._cargar_conductores()
+        self._fill_table()
 
     def _cargar_conductores(self):
         """Carga conductores desde la base de datos."""
@@ -234,7 +240,7 @@ class DetalleConductorDialog(QDialog):
         close_row.addWidget(btn_close)
         layout.addLayout(close_row)
 
-    # ── Acciones ─────────────────────────────
+    # ── Acciones  ─────────────────────────────
 
     def _habilitar(self):
         conductor_id = self._c["conductor_id"]

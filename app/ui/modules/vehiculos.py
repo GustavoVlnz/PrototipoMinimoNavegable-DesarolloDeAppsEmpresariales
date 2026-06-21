@@ -1,6 +1,6 @@
 """
 Módulo Vehículos — LoncoExpress.
-Refactorizado para usar vehiculos_queries y vehiculos_logic.
+Refactorizado para usar vehiculos_queries y vehiculos_logic (sin mock_data).
 """
 
 from PyQt6.QtCore import Qt
@@ -17,18 +17,26 @@ from app.ui.components.widgets import (
     make_badge, KpiCard, make_action_button, make_info_frame,
 )
 from app.data.queries import vehiculos_queries
+from app.core.events import event_bus
 
 
 class VehiculosView(QWidget):
 
     def __init__(self, db_session, parent=None):
         super().__init__(parent)
-
         self.db_session = db_session
         self._vehiculos = []
         self._cargar_vehiculos()
         self._stack = QStackedWidget()
         self._build_ui()
+        event_bus.vehiculo_actualizado.connect(self._on_vehiculo_actualizado)
+
+    def _on_vehiculo_actualizado(self):
+        """Recarga completa de la tabla cuando algun vehiculo cambia
+        en cualquier parte de la app (decision: recarga total, no
+        actualizacion de fila individual)."""
+        self._cargar_vehiculos()
+        self._fill_table()
 
     # ── Carga de datos ────────────────────────────────────────────
 
@@ -70,7 +78,7 @@ class VehiculosView(QWidget):
         p_layout = QVBoxLayout(panel)
         p_layout.setContentsMargins(16, 12, 16, 16)
 
-        hint = QLabel("Haz clic en Gestionar para ver detalle o ejecutar acciones.")
+        hint = QLabel("Haz clic en «Gestionar» para ver detalle o ejecutar acciones.")
         hint.setObjectName("page_subtitle")
         p_layout.addWidget(hint)
 

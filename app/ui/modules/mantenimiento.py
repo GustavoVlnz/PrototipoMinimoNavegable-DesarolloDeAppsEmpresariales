@@ -12,13 +12,14 @@ from PyQt6.QtWidgets import (
 from app.logic import mantenimiento_logic
 from app.ui.components.widgets import TopBar, make_table, set_table_item
 from app.data.queries import mantenimiento_queries
+from app.core.events import event_bus
+
 
 _SIGUIENTE_ESTADO = {
     "Pendiente":            ("En_Revision", "Marcar En revisión"),
     "Programada":           ("En_Revision", "Marcar En revisión"),
     "En_Espera_Repuestos":  ("En_Revision", "Marcar En revisión"),
 }
-
 
 class MantenimientoView(QWidget):
 
@@ -29,6 +30,13 @@ class MantenimientoView(QWidget):
         self._selected_row = -1
         self._cargar_ordenes()
         self._build_ui()
+        event_bus.mantenimiento_actualizado.connect(self._on_mantenimiento_actualizado)
+
+    def _on_mantenimiento_actualizado(self):
+        self._cargar_ordenes()
+        self._fill_table()
+        self._selected_row = -1
+        self._update_action_buttons()
 
     # ── Carga de datos ────────────────────────────────────────────
 
@@ -124,7 +132,6 @@ class MantenimientoView(QWidget):
         self._update_action_buttons()
 
     def _update_action_buttons(self):
-
         if self._selected_row < 0:
             self._btn_avanzar.setVisible(False)
             self._btn_habilitar.setVisible(False)
@@ -137,7 +144,6 @@ class MantenimientoView(QWidget):
         self._btn_avanzar.setVisible(destino_avance is not None)
         if destino_avance:
             self._btn_avanzar.setText(destino_avance[1])
-
         puede_completar = estado_raw in ("En_Revision", "En_Espera_Repuestos")
         self._btn_habilitar.setVisible(puede_completar)
 
@@ -172,7 +178,6 @@ class MantenimientoView(QWidget):
             QMessageBox.critical(self, "Error", error or "No se pudo actualizar el estado.")
 
     def _habilitar_vehiculo(self):
-
         if self._selected_row < 0:
             return
         orden = self._ordenes[self._selected_row]

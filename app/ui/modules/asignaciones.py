@@ -12,6 +12,7 @@ from app.ui.components.widgets import (
 from app.data.queries import asignaciones_queries
 from app.logic import asignaciones_service
 from app.logic import transition_service
+from app.core.events import event_bus
 
 
 class AsignacionesView(QWidget):
@@ -22,6 +23,7 @@ class AsignacionesView(QWidget):
         self._asignaciones = []
         self._build_ui()
         self.cargar_datos()
+        event_bus.asignacion_actualizada.connect(self.cargar_datos)
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
@@ -68,7 +70,6 @@ class AsignacionesView(QWidget):
         self._fill_table()
 
     def _actualizar_kpis(self):
-
         while self.kpi_layout.count():
             item = self.kpi_layout.takeAt(0)
             if item.widget():
@@ -101,7 +102,6 @@ class AsignacionesView(QWidget):
         self._table.resizeColumnsToContents()
 
     def _ver_detalle(self, asignacion_id: int):
-
         dlg = DetalleAsignacionDialog(asignacion_id, self.db_session, self)
         if dlg.exec():
             self.cargar_datos()
@@ -212,7 +212,6 @@ class DetalleAsignacionDialog(QDialog):
 
         layout.addWidget(frame)
         layout.addSpacing(18)
-
         acciones_mostradas = False
 
         if transition_service.puede_transicionar(asig, "En_Ejecucion"):
@@ -256,7 +255,7 @@ class DetalleAsignacionDialog(QDialog):
             r_box.addWidget(make_action_button("Cerrar", "btn_secondary", self.reject, ""))
             layout.addLayout(r_box)
 
-    # ─── Acciones ──────────────
+    # ─── Acciones. ──────────────
 
     def _checkout(self):
         try:

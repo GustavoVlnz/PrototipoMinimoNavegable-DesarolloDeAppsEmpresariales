@@ -7,6 +7,7 @@ Consultas para el módulo de Reportes y Trazabilidad.
 
 from datetime import date, datetime
 
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
 from app.data.models import (
@@ -21,9 +22,62 @@ from app.data.models import (
 from app.data.queries import asignaciones_queries
 
 
-def _estado_display(valor: str | None) -> str:
+# ─────────────────────────────────────────────────────────────────────────────
+# DISPLAY HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+_ASIGNACION_DISPLAY = {
+    "Solicitada": "Solicitada",
+    "Pendiente": "Pendiente",
+    "Confirmada": "Confirmada",
+    "En_Ejecucion": "En ejecución",
+    "Con_Incidencia": "Con incidencia",
+    "Completada": "Completada",
+    "Completada_Con_Incidencia": "Completada con incidencia",
+    "Fallida": "Fallida",
+    "Fallida_Parcial": "Fallida parcial",
+    "Cerrada": "Cerrada",
+}
+
+_INCIDENTE_DISPLAY = {
+    "Registrado": "Registrado",
+    "En_Analisis": "En análisis",
+    "En_Gestion": "En gestión",
+    "Resuelto": "Resuelto",
+    "Cerrado": "Cerrado",
+}
+
+_DOCUMENTO_DISPLAY = {
+    "Vigente": "Vigente",
+    "Por_Vencer": "Por vencer",
+    "Vencido": "Vencido",
+}
+
+_VEHICULO_DISPLAY = {
+    "Disponible": "Disponible",
+    "Reservado": "Reservado",
+    "En_Ruta": "En ruta",
+    "En_Mantencion": "En mantención",
+    "Fuera_de_Servicio": "Fuera de servicio",
+    "Bloqueado": "Bloqueado",
+}
+
+_MANTENIMIENTO_DISPLAY = {
+    "Pendiente": "Pendiente",
+    "Programada": "Programada",
+    "En_Revision": "En revisión",
+    "En_Espera_Repuestos": "En espera repuestos",
+    "Completada": "Completada",
+}
+
+
+def _estado_display(valor: str | None, mapa: dict | None = None) -> str:
     if not valor:
         return "—"
+
+    if mapa and valor in mapa:
+        return mapa[valor]
+
     return valor.replace("_", " ")
 
 
@@ -50,6 +104,47 @@ def _ruta_asignacion(asignacion: Asignacion | None) -> str:
     )
 
     return f"{origen} → {destino}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HELPERS DE CONTEO PARA GRÁFICOS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _conteo_por_estado(session, modelo, campo_estado, orden_estados: list[str], mapa_display: dict) -> list[dict]:
+    """
+    Retorna una lista uniforme para gráficos.
+
+    Ejemplo:
+    [
+        {"estado_raw": "Disponible", "estado": "Disponible", "total": 3},
+        {"estado_raw": "Bloqueado", "estado": "Bloqueado", "total": 1},
+    ]
+    """
+    filas = (
+        session.query(campo_estado, func.count(modelo.id))
+        .group_by(campo_estado)
+        .all()
+    )
+
+    conteos = {estado: int(total) for estado, total in filas}
+
+    return [
+        {
+            "estado_raw": estado,
+            "estado": _estado_display(estado, mapa_display),
+            "total": conteos.get(estado, 0),
+        }
+        for estado in orden_estados
+    ]
+
+
+def _filtrar_ceros(datos: list[dict]) -> list[dict]:
+    """
+    Para que los gráficos no se llenen de estados vacíos.
+    Si todos son cero, retorna la lista original.
+    """
+    con_datos = [d for d in datos if d.get("total", 0) > 0]
+    return con_datos if con_datos else datos
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -115,6 +210,99 @@ def obtener_resumen_reportes(session) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DATOS PARA GRÁFICOS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def obtener_asignaciones_por_estado(session) -> list[dict]:
+    datos = _conteo_por_estado(
+        session,
+        Asignacion,
+        Asignacion.estado_asignacion,
+        [
+            "Solicitada",
+            "Pendiente",
+            "Confirmada",
+            "En_Ejecucion",
+            "Con_Incidencia",
+            "Completada",
+            "Completada_Con_Incidencia",
+            "Fallida",
+            "Fallida_Parcial",
+            "Cerrada",
+        ],
+        _ASIGNACION_DISPLAY,
+    )
+    return _filtrar_ceros(datos)
+
+
+def obtener_incidentes_por_estado(session) -> list[dict]:
+    datos = _conteo_por_estado(
+        session,
+        Incidente,
+        Incidente.estado_incidente,
+        [
+            "Registrado",
+            "En_Analisis",
+            "En_Gestion",
+            "Resuelto",
+            "Cerrado",
+        ],
+        _INCIDENTE_DISPLAY,
+    )
+    return _filtrar_ceros(datos)
+
+
+def obtener_documentos_por_estado(session) -> list[dict]:
+    datos = _conteo_por_estado(
+        session,
+        DocumentacionVehiculo,
+        DocumentacionVehiculo.estado_documental,
+        [
+            "Vigente",
+            "Por_Vencer",
+            "Vencido",
+        ],
+        _DOCUMENTO_DISPLAY,
+    )
+    return _filtrar_ceros(datos)
+
+
+def obtener_vehiculos_por_estado(session) -> list[dict]:
+    datos = _conteo_por_estado(
+        session,
+        Vehiculo,
+        Vehiculo.estado_operacional,
+        [
+            "Disponible",
+            "Reservado",
+            "En_Ruta",
+            "En_Mantencion",
+            "Fuera_de_Servicio",
+            "Bloqueado",
+        ],
+        _VEHICULO_DISPLAY,
+    )
+    return _filtrar_ceros(datos)
+
+
+def obtener_mantenimientos_por_estado(session) -> list[dict]:
+    datos = _conteo_por_estado(
+        session,
+        Mantenimiento,
+        Mantenimiento.estado,
+        [
+            "Pendiente",
+            "Programada",
+            "En_Revision",
+            "En_Espera_Repuestos",
+            "Completada",
+        ],
+        _MANTENIMIENTO_DISPLAY,
+    )
+    return _filtrar_ceros(datos)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # HISTORIAL DE ASIGNACIONES
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -168,7 +356,7 @@ def obtener_incidentes_reporte(session) -> list[dict]:
             "conductor": _nombre_conductor(asig),
             "ruta": _ruta_asignacion(asig),
             "gravedad": _estado_display(inc.clasificacion_gravedad),
-            "estado": _estado_display(inc.estado_incidente),
+            "estado": _estado_display(inc.estado_incidente, _INCIDENTE_DISPLAY),
             "reportado": (
                 inc.fecha_hora_reporte.strftime("%Y-%m-%d %H:%M")
                 if inc.fecha_hora_reporte
@@ -213,7 +401,7 @@ def obtener_documentacion_reporte(session) -> list[dict]:
             "documento": _estado_display(doc.tipo_documento),
             "vencimiento": doc.fecha_vencimiento or "—",
             "dias_restantes": dias,
-            "estado": _estado_display(doc.estado_documental),
+            "estado": _estado_display(doc.estado_documental, _DOCUMENTO_DISPLAY),
         })
 
     return resultado
@@ -221,6 +409,7 @@ def obtener_documentacion_reporte(session) -> list[dict]:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MANTENIMIENTO
+# Se mantiene por compatibilidad si después quieres tabla de detalle.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def obtener_mantenimiento_reporte(session) -> list[dict]:
@@ -246,7 +435,7 @@ def obtener_mantenimiento_reporte(session) -> list[dict]:
             "vehiculo": m.vehiculo.patente if m.vehiculo else "—",
             "tipo": _estado_display(m.tipo_mantencion),
             "prioridad": m.prioridad or "—",
-            "estado": _estado_display(m.estado),
+            "estado": _estado_display(m.estado, _MANTENIMIENTO_DISPLAY),
             "incidente": m.incidente.folio() if m.incidente else "—",
             "ingreso": (
                 m.fecha_ingreso.strftime("%Y-%m-%d")

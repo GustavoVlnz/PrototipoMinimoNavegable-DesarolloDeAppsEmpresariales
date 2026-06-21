@@ -60,7 +60,7 @@ _TRANSICIONES_VEHICULO: dict[str, set[str]] = {
     "En_Ruta":           {"Disponible", "En_Mantencion", "Fuera_de_Servicio", "Bloqueado"},
     "En_Mantencion":     {"Disponible", "Fuera_de_Servicio", "Bloqueado"},
     "Fuera_de_Servicio": {"Disponible", "En_Mantencion", "Bloqueado"},
-    "Bloqueado":         {"Disponible"},
+    "Bloqueado":         {"Disponible", "En_Mantencion", "Fuera_de_Servicio"},
 }
 
 _TRANSICIONES_CONDUCTOR: dict[str, set[str]] = {

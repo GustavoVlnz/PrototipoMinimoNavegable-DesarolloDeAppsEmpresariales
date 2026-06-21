@@ -1,14 +1,16 @@
 """
-Módulo Reportes — Trazabilidad, historial e indicadores operativos.
+Módulo Reportes — Trazabilidad e indicadores visuales.
 Actor: Administrador General / Supervisor.
 """
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QFrame, QScrollArea, QSizePolicy
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtGui import QPainter, QColor, QPen, QFont
 
-from app.ui.components.widgets import TopBar, make_table, set_table_item, KpiCard
+from app.ui.components.widgets import TopBar, KpiCard
 from app.data.queries import reportes_queries
 from app.logic import documentacion_logic
 from app.core.events import event_bus
@@ -22,10 +24,11 @@ class ReportesView(QWidget):
         self.db_session = db_session
 
         self._resumen = {}
-        self._asignaciones = []
-        self._incidentes = []
-        self._documentacion = []
-        self._mantenimientos = []
+        self._asignaciones_estado = []
+        self._incidentes_estado = []
+        self._documentos_estado = []
+        self._vehiculos_estado = []
+        self._mantenimientos_estado = []
 
         self._build_ui()
         self._conectar_eventos()
@@ -54,10 +57,11 @@ class ReportesView(QWidget):
         )
 
         self._resumen = reportes_queries.obtener_resumen_reportes(self.db_session)
-        self._asignaciones = reportes_queries.obtener_historial_asignaciones(self.db_session)
-        self._incidentes = reportes_queries.obtener_incidentes_reporte(self.db_session)
-        self._documentacion = reportes_queries.obtener_documentacion_reporte(self.db_session)
-        self._mantenimientos = reportes_queries.obtener_mantenimiento_reporte(self.db_session)
+        self._asignaciones_estado = reportes_queries.obtener_asignaciones_por_estado(self.db_session)
+        self._incidentes_estado = reportes_queries.obtener_incidentes_por_estado(self.db_session)
+        self._documentos_estado = reportes_queries.obtener_documentos_por_estado(self.db_session)
+        self._vehiculos_estado = reportes_queries.obtener_vehiculos_por_estado(self.db_session)
+        self._mantenimientos_estado = reportes_queries.obtener_mantenimientos_por_estado(self.db_session)
 
     def _recargar(self):
         self._cargar_datos()
@@ -72,7 +76,7 @@ class ReportesView(QWidget):
 
         self._topbar = TopBar(
             "Reportes y Trazabilidad",
-            "Resumen operacional conectado a la base de datos",
+            "Indicadores visuales del estado operativo de la flota",
         )
         root.addWidget(self._topbar)
 
@@ -87,19 +91,57 @@ class ReportesView(QWidget):
 
         layout = QVBoxLayout(content)
         layout.setContentsMargins(28, 24, 28, 28)
-        layout.setSpacing(16)
+        layout.setSpacing(18)
 
         layout.addWidget(self._make_resumen())
-        layout.addWidget(self._make_historial_asignaciones())
-        layout.addWidget(self._make_incidentes())
-        layout.addWidget(self._make_documentacion())
-        layout.addWidget(self._make_mantenimiento())
+
+        layout.addLayout(self._make_chart_row([
+            ChartCard(
+                "Asignaciones por estado",
+                "Distribución del flujo operacional de transporte.",
+                self._asignaciones_estado,
+                accent="#2F80ED",
+            ),
+            ChartCard(
+                "Vehículos por estado",
+                "Disponibilidad actual del parque vehicular.",
+                self._vehiculos_estado,
+                accent="#16A34A",
+            ),
+        ]))
+
+        layout.addLayout(self._make_chart_row([
+            ChartCard(
+                "Incidentes por estado",
+                "Seguimiento de incidentes registrados y su avance.",
+                self._incidentes_estado,
+                accent="#DC2626",
+            ),
+            ChartCard(
+                "Documentación por estado",
+                "Control de documentos vigentes, por vencer y vencidos.",
+                self._documentos_estado,
+                accent="#D97706",
+            ),
+        ]))
+
+        layout.addLayout(self._make_chart_row([
+            ChartCard(
+                "Mantenimiento por estado",
+                "Estado de las órdenes de mantenimiento registradas.",
+                self._mantenimientos_estado,
+                accent="#7C3AED",
+            ),
+            SummaryCard(
+                "Lectura operacional",
+                self._generar_lectura_operacional(),
+            ),
+        ]))
 
         layout.addStretch()
-
         self._scroll.setWidget(content)
 
-    # ── Paneles ───────────────────────────────────────────────────────────────
+    # ── Secciones ─────────────────────────────────────────────────────────────
 
     def _make_resumen(self) -> QWidget:
         row = QWidget()
@@ -147,137 +189,207 @@ class ReportesView(QWidget):
         layout.addStretch()
         return row
 
-    def _make_historial_asignaciones(self) -> QFrame:
-        panel = _panel("Historial de Asignaciones")
 
-        cols = [
-            "ID", "Solicitud", "Vehículo", "Conductor",
-            "Ruta", "Prioridad", "Estado", "Inicio", "Fin",
+    def _make_chart_row(self, cards: list[QWidget]) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(16)
+
+        for card in cards:
+            row.addWidget(card)
+
+        return row
+
+    def _generar_lectura_operacional(self) -> list[str]:
+        asignaciones_completadas = self._resumen.get("asignaciones_completadas", 0)
+        asignaciones_con_incidencia = self._resumen.get("asignaciones_con_incidencia", 0)
+        incidentes_activos = self._resumen.get("incidentes_activos", 0)
+        documentos_criticos = self._resumen.get("documentos_criticos", 0)
+        vehiculos_bloqueados = self._resumen.get("vehiculos_bloqueados", 0)
+        mantenciones_abiertas = self._resumen.get("mantenciones_abiertas", 0)
+
+        lineas = [
+            f"• {asignaciones_completadas} asignaciones se encuentran completadas o cerradas.",
+            f"• {asignaciones_con_incidencia} asignaciones registran historial de incidencia.",
+            f"• {incidentes_activos} incidentes siguen activos y requieren seguimiento.",
+            f"• {documentos_criticos} documentos están vencidos o próximos a vencer.",
+            f"• {vehiculos_bloqueados} vehículos se encuentran bloqueados operacionalmente.",
+            f"• {mantenciones_abiertas} órdenes de mantenimiento permanecen abiertas.",
         ]
 
-        table = make_table(cols)
-        table.setRowCount(len(self._asignaciones))
+        if incidentes_activos > 0 or documentos_criticos > 0 or vehiculos_bloqueados > 0:
+            lineas.append("• La operación presenta alertas activas que deben priorizarse.")
+        else:
+            lineas.append("• No se observan alertas críticas activas en la operación.")
 
-        for r, a in enumerate(self._asignaciones):
-            ruta = f"{a.get('origen', '—')} → {a.get('destino', '—')}"
-
-            set_table_item(table, r, 0, a.get("id", "—"))
-            set_table_item(table, r, 1, a.get("solicitud_id", "—"))
-            set_table_item(table, r, 2, a.get("vehiculo_patente", "—"))
-            set_table_item(table, r, 3, a.get("conductor", "—"))
-            set_table_item(table, r, 4, ruta)
-            set_table_item(table, r, 5, a.get("prioridad", "—"), badge=True)
-            set_table_item(table, r, 6, a.get("estado", "—"), badge=True)
-            set_table_item(table, r, 7, a.get("inicio") or "—")
-            set_table_item(table, r, 8, a.get("fin") or "—")
-
-        table.resizeColumnsToContents()
-        _ajustar_altura_tabla(table, len(self._asignaciones), minimo=220, maximo=500)
-        panel.layout().addWidget(table)
-        return panel
-
-    def _make_incidentes(self) -> QFrame:
-        panel = _panel("Reporte de Incidentes")
-
-        cols = [
-            "ID", "Asignación", "Vehículo", "Conductor",
-            "Ruta", "Gravedad", "Estado", "Reportado",
-        ]
-
-        table = make_table(cols)
-        table.setRowCount(len(self._incidentes))
-
-        for r, inc in enumerate(self._incidentes):
-            set_table_item(table, r, 0, inc.get("id", "—"))
-            set_table_item(table, r, 1, inc.get("asignacion", "—"))
-            set_table_item(table, r, 2, inc.get("vehiculo", "—"))
-            set_table_item(table, r, 3, inc.get("conductor", "—"))
-            set_table_item(table, r, 4, inc.get("ruta", "—"))
-            set_table_item(table, r, 5, inc.get("gravedad", "—"), badge=True)
-            set_table_item(table, r, 6, inc.get("estado", "—"), badge=True)
-            set_table_item(table, r, 7, inc.get("reportado", "—"))
-
-        table.resizeColumnsToContents()
-        _ajustar_altura_tabla(table, len(self._incidentes), minimo=180, maximo=420)
-        panel.layout().addWidget(table)
-        return panel
-
-    def _make_documentacion(self) -> QFrame:
-        panel = _panel("Reporte Documental Crítico")
-
-        cols = ["Vehículo", "Documento", "Vencimiento", "Días Restantes", "Estado"]
-
-        table = make_table(cols)
-        table.setRowCount(len(self._documentacion))
-
-        for r, doc in enumerate(self._documentacion):
-            dias = doc.get("dias_restantes", 0)
-            dias_str = f"+{dias} días" if dias >= 0 else f"{dias} días"
-
-            set_table_item(table, r, 0, doc.get("vehiculo", "—"))
-            set_table_item(table, r, 1, doc.get("documento", "—"))
-            set_table_item(table, r, 2, doc.get("vencimiento", "—"))
-            set_table_item(table, r, 3, dias_str)
-            set_table_item(table, r, 4, doc.get("estado", "—"), badge=True)
-
-        table.resizeColumnsToContents()
-        _ajustar_altura_tabla(table, len(self._documentacion), minimo=170, maximo=360)
-        panel.layout().addWidget(table)
-        return panel
-
-    def _make_mantenimiento(self) -> QFrame:
-        panel = _panel("Reporte de Mantenimiento")
-
-        cols = [
-            "ID", "Vehículo", "Tipo", "Prioridad",
-            "Estado", "Incidente", "Ingreso", "Egreso",
-        ]
-
-        table = make_table(cols)
-        table.setRowCount(len(self._mantenimientos))
-
-        for r, m in enumerate(self._mantenimientos):
-            set_table_item(table, r, 0, m.get("id", "—"))
-            set_table_item(table, r, 1, m.get("vehiculo", "—"))
-            set_table_item(table, r, 2, m.get("tipo", "—"))
-            set_table_item(table, r, 3, m.get("prioridad", "—"), badge=True)
-            set_table_item(table, r, 4, m.get("estado", "—"), badge=True)
-            set_table_item(table, r, 5, m.get("incidente", "—"))
-            set_table_item(table, r, 6, m.get("ingreso", "—"))
-            set_table_item(table, r, 7, m.get("egreso", "—"))
-
-        table.resizeColumnsToContents()
-        _ajustar_altura_tabla(table, len(self._mantenimientos), minimo=180, maximo=420)
-        panel.layout().addWidget(table)
-        return panel
+        return lineas
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# WIDGETS DE GRÁFICOS
+# ══════════════════════════════════════════════════════════════════════════════
 
-def _panel(title: str) -> QFrame:
-    panel = QFrame()
-    panel.setObjectName("panel")
+class ChartCard(QFrame):
 
-    layout = QVBoxLayout(panel)
-    layout.setContentsMargins(16, 16, 16, 16)
-    layout.setSpacing(10)
+    def __init__(
+        self,
+        title: str,
+        subtitle: str,
+        data: list[dict],
+        accent: str = "#2F80ED",
+        parent=None,
+    ):
+        super().__init__(parent)
 
-    header = QLabel(title)
-    header.setObjectName("section_header")
-    layout.addWidget(header)
+        self.setObjectName("panel")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    return panel
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
 
-def _ajustar_altura_tabla(table, filas: int, minimo: int = 150, maximo: int = 420):
-    """
-    Ajusta la altura de una tabla según la cantidad de filas para evitar
-    que se vea solo el encabezado.
-    """
-    alto_header = table.horizontalHeader().height()
-    alto_fila = table.verticalHeader().defaultSectionSize()
-    alto_scroll = 28
+        title_lbl = QLabel(title)
+        title_lbl.setObjectName("section_header")
+        layout.addWidget(title_lbl)
 
-    alto = alto_header + (max(filas, 1) * alto_fila) + alto_scroll + 12
-    alto = max(minimo, min(alto, maximo))
+        sub_lbl = QLabel(subtitle)
+        sub_lbl.setWordWrap(True)
+        sub_lbl.setStyleSheet("color: #8EA8C8; font-size: 12px;")
+        layout.addWidget(sub_lbl)
 
-    table.setMinimumHeight(alto)
+        chart = HorizontalBarChart(data, accent=accent)
+        layout.addWidget(chart)
+
+
+class HorizontalBarChart(QWidget):
+
+    def __init__(self, data: list[dict], accent: str = "#2F80ED", parent=None):
+        super().__init__(parent)
+
+        self._data = data or []
+        self._accent = QColor(accent)
+
+        rows = max(len(self._data), 3)
+        self.setMinimumHeight(70 + rows * 34)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect().adjusted(4, 8, -4, -8)
+
+        if not self._data:
+            self._draw_empty(painter, rect)
+            return
+
+        max_value = max((item.get("total", 0) for item in self._data), default=0)
+        total_general = sum(item.get("total", 0) for item in self._data)
+
+        if max_value <= 0:
+            self._draw_empty(painter, rect)
+            return
+
+        label_width = min(190, max(130, int(rect.width() * 0.34)))
+        value_width = 48
+        gap = 12
+
+        chart_left = rect.left() + label_width + gap
+        chart_right = rect.right() - value_width
+        chart_width = max(40, chart_right - chart_left)
+
+        row_height = max(30, int(rect.height() / max(len(self._data), 1)))
+        bar_height = 15
+
+        font_label = QFont()
+        font_label.setPointSize(9)
+
+        font_value = QFont()
+        font_value.setPointSize(9)
+        font_value.setBold(True)
+
+        for i, item in enumerate(self._data):
+            label = item.get("estado", "—")
+            value = int(item.get("total", 0))
+            porcentaje = int(round((value / total_general) * 100)) if total_general > 0 else 0
+
+            row_top = rect.top() + i * row_height
+            center_y = row_top + row_height // 2
+
+            painter.setFont(font_label)
+            painter.setPen(QColor("#B8C7E0"))
+            painter.drawText(
+                rect.left(),
+                row_top,
+                label_width,
+                row_height,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                label,
+            )
+
+            bg_rect = QRectF(
+                chart_left,
+                center_y - bar_height / 2,
+                chart_width,
+                bar_height,
+            )
+
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#132A46"))
+            painter.drawRoundedRect(bg_rect, 7, 7)
+
+            fill_width = chart_width * (value / max_value)
+
+            fill_rect = QRectF(
+                chart_left,
+                center_y - bar_height / 2,
+                max(3, fill_width) if value > 0 else 0,
+                bar_height,
+            )
+
+            painter.setBrush(self._accent)
+            painter.drawRoundedRect(fill_rect, 7, 7)
+
+            painter.setFont(font_value)
+            painter.setPen(QColor("#E8F0FE"))
+            painter.drawText(
+                chart_right + 8,
+                row_top,
+                value_width,
+                row_height,
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                f"{value} ({porcentaje}%)",
+            )
+
+    def _draw_empty(self, painter: QPainter, rect):
+        painter.setPen(QPen(QColor("#8EA8C8")))
+        painter.drawText(
+            rect,
+            Qt.AlignmentFlag.AlignCenter,
+            "Sin datos disponibles",
+        )
+
+
+class SummaryCard(QFrame):
+
+    def __init__(self, title: str, lines: list[str], parent=None):
+        super().__init__(parent)
+
+        self.setObjectName("panel")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(8)
+
+        title_lbl = QLabel(title)
+        title_lbl.setObjectName("section_header")
+        layout.addWidget(title_lbl)
+
+        for line in lines:
+            lbl = QLabel(line)
+            lbl.setWordWrap(True)
+            lbl.setStyleSheet("color: #B8C7E0; font-size: 13px;")
+            layout.addWidget(lbl)
+
+        layout.addStretch()

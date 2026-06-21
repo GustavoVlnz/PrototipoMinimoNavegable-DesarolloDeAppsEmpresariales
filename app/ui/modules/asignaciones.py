@@ -165,9 +165,7 @@ class DetalleAsignacionDialog(QDialog):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(28, 28, 28, 24)
-        estado_display = asignaciones_queries._ESTADO_DISPLAY.get(
-            asig.estado_asignacion, asig.estado_asignacion
-        )
+        estado_display = asignaciones_queries.estado_display(asig.estado_asignacion)
 
         row = QHBoxLayout()
         title = QLabel(f"Asignación {asig.folio()}")
@@ -214,7 +212,7 @@ class DetalleAsignacionDialog(QDialog):
         layout.addSpacing(18)
         acciones_mostradas = False
 
-        if transition_service.puede_transicionar(asig, "En_Ejecucion"):
+        if asig.estado_asignacion == "Confirmada" and transition_service.puede_transicionar(asig, "En_Ejecucion"):
             acciones_mostradas = True
             layout.addWidget(make_info_frame("El conductor debe revisar el vehículo antes de salir."))
             layout.addSpacing(10)
@@ -232,7 +230,14 @@ class DetalleAsignacionDialog(QDialog):
             layout.addWidget(make_info_frame("La asignación se encuentra actualmente en ruta."))
             layout.addSpacing(10)
             r_box = QHBoxLayout()
-            r_box.addWidget(make_action_button("Registrar Entrega", "btn_success", self._entrega, ""))
+            if transition_service.tiene_incidentes_activos(asig):
+                layout.addWidget(make_info_frame(
+                    "La asignación tiene incidentes activos. Primero deben quedar Resueltos "
+                    "o Cerrados antes de registrar la entrega."
+                ))
+            else:
+                r_box.addWidget(make_action_button("Registrar Entrega", "btn_success", self._entrega, ""))
+
             r_box.addStretch()
             r_box.addWidget(make_action_button("Reportar Incidente", "btn_warning", self._incidente, ""))
             layout.addLayout(r_box)
@@ -257,12 +262,30 @@ class DetalleAsignacionDialog(QDialog):
 
     # ─── Acciones. ──────────────
 
-    def _checkout(self):
+    def _obtener_asignacion_actual(self):
+        asig = asignaciones_queries.obtener_orm_por_id(
+            self.db_session,
+            self._asignacion_id,
+        )
+        if not asig:
+            QMessageBox.warning(self, "Error", "No se encontró la asignación.")
+            return None
+        return asig
+
+    def _ejecutar_transicion(self, accion, *args):
+        asig = self._obtener_asignacion_actual()
+        if not asig:
+            return
+
         try:
-            transition_service.iniciar_ruta(self.db_session, self._asig)
+            accion(self.db_session, asig, *args)
             self.accept()
         except transition_service.TransitionError as e:
+            self.db_session.rollback()
             QMessageBox.critical(self, "Error", str(e))
+
+    def _checkout(self):
+        self._ejecutar_transicion(transition_service.iniciar_ruta)
 
     def _entrega(self):
         resp = QMessageBox.question(
@@ -270,25 +293,13 @@ class DetalleAsignacionDialog(QDialog):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         conforme = (resp == QMessageBox.StandardButton.Yes)
-        try:
-            transition_service.registrar_entrega(self.db_session, self._asig, conforme)
-            self.accept()
-        except transition_service.TransitionError as e:
-            QMessageBox.critical(self, "Error", str(e))
+        self._ejecutar_transicion(transition_service.registrar_entrega, conforme)
 
     def _cerrar(self):
-        try:
-            transition_service.cerrar_asignacion(self.db_session, self._asig)
-            self.accept()
-        except transition_service.TransitionError as e:
-            QMessageBox.critical(self, "Error", str(e))
+        self._ejecutar_transicion(transition_service.cerrar_asignacion)
 
     def _cancelar(self):
-        try:
-            transition_service.cancelar_asignacion(self.db_session, self._asig)
-            self.accept()
-        except transition_service.TransitionError as e:
-            QMessageBox.critical(self, "Error", str(e))
+        self._ejecutar_transicion(transition_service.cancelar_asignacion)
 
     def _incidente(self):
         QMessageBox.information(self, "Incidente", "Diríjase al módulo de Incidentes vinculando esta ID de asignación.")

@@ -26,17 +26,26 @@ class VehiculosView(QWidget):
         super().__init__(parent)
         self.db_session = db_session
         self._vehiculos = []
+        self._detalle_vehiculo_id = None
         self._cargar_vehiculos()
         self._stack = QStackedWidget()
         self._build_ui()
         event_bus.vehiculo_actualizado.connect(self._on_vehiculo_actualizado)
 
     def _on_vehiculo_actualizado(self):
-        """Recarga completa de la tabla cuando algun vehiculo cambia
-        en cualquier parte de la app (decision: recarga total, no
-        actualizacion de fila individual)."""
+        """Recarga tabla y detalle abierto cuando cambia un vehículo."""
         self._cargar_vehiculos()
         self._fill_table()
+
+        if self._stack.currentIndex() == 1 and self._detalle_vehiculo_id:
+            vehiculo_actualizado = vehiculos_queries.obtener_vehiculo_por_id(
+                self.db_session,
+                self._detalle_vehiculo_id,
+            )
+            if vehiculo_actualizado:
+                self._mostrar_detalle(vehiculo_actualizado)
+            else:
+                self._volver()
 
     # ── Carga de datos ────────────────────────────────────────────
 
@@ -141,19 +150,34 @@ class VehiculosView(QWidget):
     # ── Vista Detalle ─────────────────────────────────────────────
 
     def _ver_detalle(self, row: int):
-        v = self._vehiculos[row]
+        if row < 0 or row >= len(self._vehiculos):
+            QMessageBox.warning(self, "Error", "No se encontró el vehículo seleccionado.")
+            return
+
+        self._mostrar_detalle(self._vehiculos[row])
+
+    def _mostrar_detalle(self, vehiculo: dict):
+        self._detalle_vehiculo_id = vehiculo["vehiculo_id"]
+
         detail = VehiculoDetalleView(
-            v,
+            vehiculo,
             on_back=self._volver,
             on_toggle=self._toggle_bloqueo,
         )
+
         if self._stack.count() > 1:
-            self._stack.removeWidget(self._stack.widget(1))
+            old_detail = self._stack.widget(1)
+            self._stack.removeWidget(old_detail)
+            old_detail.deleteLater()
+
         self._stack.addWidget(detail)
         self._stack.setCurrentIndex(1)
-        self._topbar.findChild(QLabel, "page_title").setText(f"Vehículo {v['patente']}")
+        self._topbar.findChild(QLabel, "page_title").setText(
+            f"Vehículo {vehiculo['patente']}"
+        )
 
     def _volver(self):
+        self._detalle_vehiculo_id = None
         self._cargar_vehiculos()
         self._fill_table()
         self._stack.setCurrentIndex(0)

@@ -1,5 +1,5 @@
 """
-models.py
+app/data/models.py
 Define todas las tablas de LoncoExpress como clases ORM de SQLAlchemy.
 """
 

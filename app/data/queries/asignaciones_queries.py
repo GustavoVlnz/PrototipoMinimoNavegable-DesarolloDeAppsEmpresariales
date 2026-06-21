@@ -17,6 +17,11 @@ _ESTADO_DISPLAY = {
     "Cerrada": "Cerrada",
 }
 
+def estado_display(estado_raw: str) -> str:
+    """Retorna el texto visible de un estado de asignación."""
+    return _ESTADO_DISPLAY.get(estado_raw, estado_raw)
+
+
 def _asignacion_a_dict(asig: Asignacion) -> dict:
     if not asig:
         return {}
@@ -55,7 +60,7 @@ def _asignacion_a_dict(asig: Asignacion) -> dict:
         "origen": origen,
         "destino": destino,
         "prioridad": prioridad,
-        "estado": _ESTADO_DISPLAY.get(asig.estado_asignacion, asig.estado_asignacion),
+        "estado": estado_display(asig.estado_asignacion),
         "estado_raw": asig.estado_asignacion,
         "inicio": asig.fecha_asignacion.strftime("%Y-%m-%d %H:%M") if asig.fecha_asignacion else None,
         "fin": (

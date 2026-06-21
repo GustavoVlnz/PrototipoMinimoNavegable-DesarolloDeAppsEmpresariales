@@ -45,8 +45,8 @@ _TRANSICIONES_ASIGNACION: dict[str, set[str]] = {
     "Solicitada":               {"Pendiente", "Confirmada", "Fallida"},
     "Pendiente":                {"Confirmada", "Fallida"},
     "Confirmada":               {"En_Ejecucion", "Fallida"},
-    "En_Ejecucion":             {"Con_Incidencia", "Completada", "Fallida", "Fallida_Parcial"},
-    "Con_Incidencia":           {"En_Ejecucion", "Completada_Con_Incidencia", "Fallida", "Fallida_Parcial"},
+    "En_Ejecucion": {"Con_Incidencia", "Completada", "Completada_Con_Incidencia", "Fallida", "Fallida_Parcial",},
+    "Con_Incidencia":           {"Completada_Con_Incidencia", "Fallida", "Fallida_Parcial"},
     "Completada":               {"Cerrada"},
     "Completada_Con_Incidencia": {"Cerrada"},
     "Fallida":                   {"Cerrada"},
@@ -345,20 +345,61 @@ def iniciar_ruta(session, asignacion: Asignacion) -> None:
     event_bus.asignacion_actualizada.emit()
     event_bus.vehiculo_actualizado.emit()
 
+def marcar_asignacion_con_incidencia(session, asignacion: Asignacion) -> None:
+    """
+    En_Ejecucion -> Con_Incidencia.
+
+    Se usa cuando se reporta un incidente sobre una asignación activa.
+    La asignación deja de ser una ejecución normal y queda marcada como
+    servicio con incidencia.
+    """
+    if asignacion.estado_asignacion == "Con_Incidencia":
+        return
+
+    _transicionar(asignacion, "Con_Incidencia")
+    session.commit()
+    event_bus.asignacion_actualizada.emit()
+
+
+def tiene_incidentes_activos(asignacion: Asignacion) -> bool:
+    """
+    True si la asignación tiene incidentes pendientes de gestión.
+
+    Mientras exista un incidente Registrado, En_Analisis o En_Gestion,
+    no se debe permitir registrar la entrega.
+    """
+    estados_activos = {"Registrado", "En_Analisis", "En_Gestion"}
+
+    return any(
+        incidente.estado_incidente in estados_activos
+        for incidente in asignacion.incidentes
+    )
 
 def registrar_entrega(session, asignacion: Asignacion, fue_conforme: bool) -> None:
     """
-    En_Ejecucion -> Completada o Completada_Con_Incidencia.
-    Conductor: Asignado -> Disponible.
-
+    En_Ejecucion / Con_Incidencia -> Completada o Completada_Con_Incidencia.
     """
-    nuevo_estado = "Completada" if fue_conforme else "Completada_Con_Incidencia"
+    if tiene_incidentes_activos(asignacion):
+        raise TransitionError(
+            "No se puede registrar la entrega porque la asignación tiene "
+            "incidentes activos. Primero deben quedar Resueltos o Cerrados."
+        )
+
+    tuvo_incidentes = bool(asignacion.incidentes)
+    estaba_con_incidencia = asignacion.estado_asignacion == "Con_Incidencia"
+
+    if fue_conforme and not tuvo_incidentes and not estaba_con_incidencia:
+        nuevo_estado = "Completada"
+    else:
+        nuevo_estado = "Completada_Con_Incidencia"
+
     _transicionar(asignacion, nuevo_estado)
 
     objetivo = estado_objetivo_vehiculo(asignacion.vehiculo)
     _transicionar(asignacion.vehiculo, objetivo)
 
     _transicionar(asignacion.conductor, "Disponible")
+
     session.commit()
     event_bus.asignacion_actualizada.emit()
     event_bus.vehiculo_actualizado.emit()

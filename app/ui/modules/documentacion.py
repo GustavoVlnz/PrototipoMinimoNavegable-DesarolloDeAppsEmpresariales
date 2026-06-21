@@ -4,7 +4,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QPushButton, QDialog, QComboBox, QDateEdit, QMessageBox
 )
-from PyQt6.QtCore import QDate
+from PyQt6.QtCore import QDate, Qt
+from PyQt6.QtGui import QTextCharFormat, QColor
 
 from app.ui.components.widgets import TopBar, make_table, set_table_item, make_alert_item
 from app.data.queries import documentacion_queries
@@ -140,7 +141,6 @@ class DocumentacionView(QWidget):
         self._build_ui()
 
     def _registrar_renovacion(self):
-
         dlg = RegistrarRenovacionDialog(self._documentos, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             doc, fecha = dlg.get_data()
@@ -195,6 +195,13 @@ class RegistrarRenovacionDialog(QDialog):
         self._fecha = QDateEdit()
         self._fecha.setCalendarPopup(True)
         self._fecha.setDate(QDate.currentDate())
+        _calendario = self._fecha.calendarWidget()
+        _formato_dia_normal = QTextCharFormat()
+        _formato_dia_normal.setForeground(QColor("#E8F0FE"))
+        for _dia in (Qt.DayOfWeek.Monday, Qt.DayOfWeek.Tuesday,
+                     Qt.DayOfWeek.Wednesday, Qt.DayOfWeek.Thursday,
+                     Qt.DayOfWeek.Friday):
+            _calendario.setWeekdayTextFormat(_dia, _formato_dia_normal)
         layout.addWidget(self._fecha)
 
         btn_row = QHBoxLayout()

@@ -1,4 +1,3 @@
-
 """
 Sidebar de navegación de LoncoExpress.
 Muestra el logo, menú de módulos y usuario activo.
@@ -84,9 +83,8 @@ class SidebarWidget(QWidget):
         nav_frame = QWidget()
         nav_frame.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         nav_layout = QVBoxLayout(nav_frame)
-
-        nav_layout.setContentsMargins(0, 12, 0, 12)
-        nav_layout.setSpacing(1)
+        nav_layout.setContentsMargins(8, 12, 8, 12)
+        nav_layout.setSpacing(2)
 
         button_index = 0
 

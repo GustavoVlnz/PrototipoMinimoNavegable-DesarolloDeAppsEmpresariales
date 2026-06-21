@@ -84,16 +84,16 @@ QPushButton#nav_btn {
     border: none;
 
     text-align: left;
-
-    padding: 10px 16px 8px 18px;
-    min-height: 38px;
+    padding: 0px 16px 0px 18px;
+    min-height: 40px;
+    max-height: 40px;
 
     font-size: 14px;
     font-weight: 600;
 
     border-radius: 10px;
 
-    margin: 1px 3px;
+    margin: 3px 4px;
 
     qproperty-iconSize: 20px 20px;
 }
@@ -276,6 +276,81 @@ QLabel#form_label {
     font-weight: 700;
     color: #FFFFFF;
     margin-bottom: 2px;
+}
+
+/* ───────────────────────────────────────────────
+   DATE EDIT / CALENDAR POPUP
+─────────────────────────────────────────────── */
+QDateEdit {
+    background-color: #172B42;
+    border: 1px solid #1E3A5C;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #E8F0FE;
+}
+QDateEdit:focus {
+    border: 2px solid #1E5FC3;
+}
+QDateEdit::drop-down {
+    background-color: #C7D2E3;
+    border: none;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    width: 26px;
+}
+QDateEdit::down-arrow {
+    width: 12px;
+    height: 12px;
+}
+QDateEdit QAbstractItemView {
+    background: #172B42;
+    color: #E8F0FE;
+    selection-background-color: #1E5FC3;
+}
+
+QCalendarWidget {
+    background-color: #172B42;
+    color: #E8F0FE;
+}
+/* Barra de navegación (mes/año, flechas) */
+QCalendarWidget QWidget#qt_calendar_navigationbar {
+    background-color: #1E3558;
+}
+QCalendarWidget QToolButton {
+    background-color: transparent;
+    color: #FFFFFF;
+    font-weight: 600;
+    icon-size: 16px;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 8px;
+}
+QCalendarWidget QToolButton:hover {
+    background-color: rgba(255,255,255,0.12);
+}
+QCalendarWidget QToolButton::menu-indicator {
+    image: none;
+}
+QCalendarWidget QSpinBox {
+    background-color: #172B42;
+    color: #E8F0FE;
+    border: 1px solid #1E3A5C;
+}
+/* Grilla de dias */
+QCalendarWidget QAbstractItemView:enabled {
+    background-color: #172B42;
+    color: #E8F0FE;
+    selection-background-color: #1E5FC3;
+    selection-color: #FFFFFF;
+}
+/* Dias fuera del mes actual (mas tenues, pero igual legibles) */
+QCalendarWidget QAbstractItemView:disabled {
+    color: #4A6A94;
+}
+/* Cabecera con nombres de los dias de la semana */
+QCalendarWidget QWidget#qt_calendar_calendarview {
+    background-color: #172B42;
 }
 
 /* ───────────────────────────────────────────────

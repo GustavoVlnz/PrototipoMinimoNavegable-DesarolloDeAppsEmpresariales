@@ -267,31 +267,32 @@ class DetalleSolicitudDialog(QDialog):
         close_row.addWidget(btn_close)
         layout.addLayout(close_row)
 
-    def _evaluar(self):
+    def _obtener_solicitud_actual(self):
         sol_orm = self.db_session.query(Solicitud).filter(
             Solicitud.id == self._sol["id_numerico"]
         ).first()
         if not sol_orm:
             QMessageBox.warning(self, "Error", "No se encontró la solicitud.")
+            return None
+        return sol_orm
+
+    def _ejecutar_transicion(self, accion, *args):
+        sol_orm = self._obtener_solicitud_actual()
+        if not sol_orm:
             return
+
         try:
-            transition_service.evaluar_solicitud(self.db_session, sol_orm)
+            accion(self.db_session, sol_orm, *args)
             self.accept()
         except transition_service.TransitionError as e:
+            self.db_session.rollback()
             QMessageBox.critical(self, "Error", str(e))
 
+    def _evaluar(self):
+        self._ejecutar_transicion(transition_service.evaluar_solicitud)
+
     def _aprobar(self):
-        sol_orm = self.db_session.query(Solicitud).filter(
-            Solicitud.id == self._sol["id_numerico"]
-        ).first()
-        if not sol_orm:
-            QMessageBox.warning(self, "Error", "No se encontró la solicitud.")
-            return
-        try:
-            transition_service.aprobar_solicitud(self.db_session, sol_orm)
-            self.accept()
-        except transition_service.TransitionError as e:
-            QMessageBox.critical(self, "Error", str(e))
+        self._ejecutar_transicion(transition_service.aprobar_solicitud)
 
     def _rechazar(self):
         r = QMessageBox.question(
@@ -301,17 +302,8 @@ class DetalleSolicitudDialog(QDialog):
         )
         if r != QMessageBox.StandardButton.Yes:
             return
-        sol_orm = self.db_session.query(Solicitud).filter(
-            Solicitud.id == self._sol["id_numerico"]
-        ).first()
-        if not sol_orm:
-            QMessageBox.warning(self, "Error", "No se encontró la solicitud.")
-            return
-        try:
-            transition_service.rechazar_solicitud(self.db_session, sol_orm)
-            self.accept()
-        except transition_service.TransitionError as e:
-            QMessageBox.critical(self, "Error", str(e))
+
+        self._ejecutar_transicion(transition_service.rechazar_solicitud)
 
     def _reprogramar(self):
         dlg = ReprogramarDialog(self._sol, self)

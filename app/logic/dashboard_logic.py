@@ -15,6 +15,8 @@ from app.data.models import (
     Solicitud,
     Vehiculo,
 )
+
+from app.logic import documentacion_logic
 from app.data.queries.conductores_queries import obtener_conductores_por_estado
 from app.data.queries.vehiculos_queries import obtener_vehiculos_por_estado
 from app.data.queries.asignaciones_queries import _asignacion_a_dict
@@ -224,6 +226,7 @@ def obtener_alertas(session) -> list[dict]:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def obtener_datos_dashboard(session) -> dict:
+    documentacion_logic.sincronizar_vencimientos(session, emitir_eventos=False)
     alertas = obtener_alertas(session)
     cards   = obtener_resumen_cards(session)
     cards["alertas_activas"] = len(alertas)

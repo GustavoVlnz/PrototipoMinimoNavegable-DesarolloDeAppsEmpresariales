@@ -19,13 +19,17 @@ from app.ui.modules.mantenimiento  import MantenimientoView
 from app.ui.modules.documentacion  import DocumentacionView
 from app.ui.modules.reportes       import ReportesView
 from app.ui.modules.contingencia   import ContingenciaView
+from app.logic import documentacion_logic
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        # Sesión única compartida por todos los módulos durante la vida de la app
         self._db_session = _SessionFactory()
+        documentacion_logic.sincronizar_vencimientos(
+            self._db_session,
+            emitir_eventos=False,
+        )
         self._build_ui()
 
     def closeEvent(self, event):
@@ -61,7 +65,7 @@ class MainWindow(QMainWindow):
             IncidentesView(),
             MantenimientoView(self._db_session),
             DocumentacionView(self._db_session),
-            ReportesView(),
+            ReportesView(self._db_session),
             ContingenciaView(),
         ]
         for page in self._pages:

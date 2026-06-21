@@ -28,12 +28,19 @@ class DocumentacionView(QWidget):
         self._actualizar_tabla()
 
     def _cargar_documentos(self):
-        """Carga documentos desde la base de datos y calcula vigencia."""
+        """Carga documentos desde la base de datos y sincroniza vigencia real."""
+        documentacion_logic.sincronizar_vencimientos(
+            self.db_session,
+            emitir_eventos=False,
+        )
+
         documentos_bd = documentacion_queries.obtener_todos_documentos(self.db_session)
+
         for d in documentos_bd:
             dias = documentacion_logic.calcular_dias_restantes(d["vencimiento"])
             d["dias_restantes"] = dias if dias is not None else 0
             d["estado"] = documentacion_logic.calcular_estado_vigencia(dias)
+
         self._documentos = documentos_bd
 
     def _build_ui(self):
